@@ -145,7 +145,7 @@ function computeUrgency(t: Task, allTasks: Task[]): number {
   return Math.round(urgency * 10000) / 10000;
 }
 
-// --- Public API (same signatures as old taskwarrior.ts) ---
+// --- Public API ---
 
 export async function exportTasks(_config: EngineConfig, filter: string): Promise<Task[]> {
   const s = getStore();
@@ -482,4 +482,4 @@ function findTask(id: string): Task | undefined {
   return undefined;
 }
 
-export type { EngineConfig as TaskWarriorConfig };
+

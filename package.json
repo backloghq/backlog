@@ -1,7 +1,7 @@
 {
   "name": "agent-teams-task-mcp",
   "version": "1.0.0",
-  "description": "MCP server exposing TaskWarrior for Claude Code and agent teams",
+  "description": "Persistent task management plugin for Claude Code and agent teams",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -14,7 +14,6 @@
   },
   "keywords": [
     "mcp",
-    "taskwarrior",
     "claude-code"
   ],
   "author": "",

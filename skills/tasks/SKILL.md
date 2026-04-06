@@ -5,7 +5,7 @@ description: Show the current task backlog — pending, active, blocked, and ove
 
 # Task Status Overview
 
-Show the current state of the task backlog. Use the TaskWarrior MCP tools to query and present the following:
+Show the current state of the task backlog. Use the backlog MCP tools to query and present the following:
 
 1. **Active tasks** — call `task_list` with filter `+ACTIVE` to show tasks currently being worked on
 2. **Overdue tasks** — call `task_list` with filter `+OVERDUE` to show tasks past their due date

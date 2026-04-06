@@ -17,7 +17,7 @@ import {
   writeDoc,
   readDoc,
   deleteDoc,
-  type TaskWarriorConfig,
+  type EngineConfig,
 } from "./engine/index.js";
 
 function parseTags(tags: string | undefined): string[] {
@@ -33,9 +33,9 @@ function parseTags(tags: string | undefined): string[] {
   return trimmed.split(",").map((t) => t.trim()).filter(Boolean);
 }
 
-function createServer(config: TaskWarriorConfig): McpServer {
+function createServer(config: EngineConfig): McpServer {
   const server = new McpServer({
-    name: "taskwarrior-mcp",
+    name: "backlog",
     version: "1.0.0",
   });
 
@@ -44,11 +44,11 @@ function createServer(config: TaskWarriorConfig): McpServer {
     {
       title: "List Tasks",
       description:
-        "Query tasks using TaskWarrior filter syntax. " +
+        "Query tasks using filter syntax. " +
         "Examples: 'status:pending', 'project:myproject +bug', 'due.before:tomorrow', '+OVERDUE'. " +
         "Empty filter returns all pending tasks.",
       inputSchema: z.object({
-        filter: z.string().describe("TaskWarrior filter expression. Leave empty for all pending tasks."),
+        filter: z.string().describe("Filter expression. Leave empty for all pending tasks."),
       }),
     },
     async ({ filter }) => {
@@ -62,7 +62,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
     "task_add",
     {
       title: "Add Task",
-      description: "Create a new task in TaskWarrior.",
+      description: "Create a new task.",
       inputSchema: z.object({
         description: z.string().describe("Task description text"),
         project: z.string().optional().describe("Project name, e.g. 'backend'"),
@@ -74,7 +74,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
         scheduled: z.string().optional().describe("Scheduled date — when to start working on the task, e.g. 'monday', 'tomorrow'"),
         recur: z.string().optional().describe("Recurrence frequency, e.g. 'daily', 'weekly', '2wks', 'monthly'. Requires a due date."),
         agent: z.string().optional().describe("Agent identity, e.g. 'explorer', 'planner', 'reviewer'"),
-        extra: z.string().optional().describe("Additional raw TaskWarrior attributes"),
+        extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
     async ({ description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
@@ -228,7 +228,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
     "task_undo",
     {
       title: "Undo",
-      description: "Undo the last TaskWarrior modification.",
+      description: "Undo the last modification.",
       inputSchema: z.object({}),
     },
     async () => {
@@ -336,7 +336,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
       title: "Count Tasks",
       description: "Count tasks matching a filter. More efficient than listing when you only need the number.",
       inputSchema: z.object({
-        filter: z.string().describe("TaskWarrior filter expression. Leave empty for all pending tasks."),
+        filter: z.string().describe("Filter expression. Leave empty for all pending tasks."),
       }),
     },
     async ({ filter }) => {
@@ -357,7 +357,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
         tags: z.string().optional().describe("Tags to apply, as comma-separated list. E.g. 'done,reviewed'"),
         priority: z.enum(["H", "M", "L"]).optional().describe("Priority: H/M/L"),
         agent: z.string().optional().describe("Agent identity"),
-        extra: z.string().optional().describe("Additional raw TaskWarrior attributes"),
+        extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
     async ({ description, project, tags, priority, agent, extra }) => {

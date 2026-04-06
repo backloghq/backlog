@@ -6,9 +6,9 @@
     "name": "mbocevski"
   },
   "license": "MIT",
-  "keywords": ["tasks", "planning", "backlog", "persistence", "agent-teams", "taskwarrior"],
+  "keywords": ["tasks", "planning", "backlog", "persistence", "agent-teams"],
   "mcpServers": {
-    "taskwarrior": {
+    "backlog": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/start-server.sh",
       "env": {
         "TASKDATA_ROOT": "${CLAUDE_PLUGIN_DATA}/projects"

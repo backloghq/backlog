@@ -7,7 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   ensureSetup,
   shutdown,
-  type TaskWarriorConfig as EngineConfig,
+  type EngineConfig,
 } from "../src/engine/index.js";
 import { createServer } from "../src/index.js";
 

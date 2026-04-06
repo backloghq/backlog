@@ -20,7 +20,7 @@ import {
   writeDoc,
   readDoc,
   deleteDoc,
-  type TaskWarriorConfig as EngineConfig,
+  type EngineConfig,
 } from "../src/engine/index.js";
 describe("Engine config", () => {
   const origEnv = { ...process.env };
