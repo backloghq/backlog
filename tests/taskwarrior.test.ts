@@ -14,6 +14,9 @@ import {
   undo,
   getUnique,
   importTasks,
+  countTasks,
+  logTask,
+  duplicateTask,
   writeDoc,
   readDoc,
   deleteDoc,
@@ -339,6 +342,80 @@ describe("TaskWarrior CLI integration", () => {
       const tasks = await exportTasks(config, "agent:explorer");
       expect(tasks).toHaveLength(1);
       expect((tasks[0] as Record<string, unknown>).description).toBe("Explorer task");
+    });
+  });
+
+  describe("countTasks", () => {
+    it("counts pending tasks", async () => {
+      await addTask(config, "Task one", {});
+      await addTask(config, "Task two", {});
+      await addTask(config, "Task three", {});
+      const count = await countTasks(config, "status:pending");
+      expect(count).toBe(3);
+    });
+
+    it("counts with filter", async () => {
+      await addTask(config, "A", { project: "alpha" });
+      await addTask(config, "B", { project: "beta" });
+      const count = await countTasks(config, "project:alpha");
+      expect(count).toBe(1);
+    });
+
+    it("returns 0 for no matches", async () => {
+      const count = await countTasks(config, "project:nonexistent");
+      expect(count).toBe(0);
+    });
+  });
+
+  describe("logTask", () => {
+    it("creates a task in completed state", async () => {
+      await logTask(config, "Already done", { project: "testing" });
+      const pending = await exportTasks(config, "status:pending");
+      expect(pending).toHaveLength(0);
+      const completed = await exportTasks(config, "status:completed");
+      expect(completed).toHaveLength(1);
+      expect((completed[0] as Record<string, unknown>).description).toBe("Already done");
+    });
+
+    it("supports tags", async () => {
+      await logTask(config, "Tagged log", {}, ["+done", "+reviewed"]);
+      const completed = await exportTasks(config, "status:completed");
+      const task = completed[0] as Record<string, unknown>;
+      expect(task.tags).toContain("done");
+      expect(task.tags).toContain("reviewed");
+    });
+  });
+
+  describe("duplicateTask", () => {
+    it("duplicates a task", async () => {
+      await addTask(config, "Original", { project: "test", priority: "H" });
+      await duplicateTask(config, "1", {});
+      const tasks = await exportTasks(config, "status:pending");
+      expect(tasks).toHaveLength(2);
+      expect((tasks[0] as Record<string, unknown>).description).toBe("Original");
+      expect((tasks[1] as Record<string, unknown>).description).toBe("Original");
+    });
+
+    it("duplicates with modifications", async () => {
+      await addTask(config, "Template", { project: "web" });
+      await duplicateTask(config, "1", { description: "Variation", project: "api" });
+      const tasks = await exportTasks(config, "project:api");
+      expect(tasks).toHaveLength(1);
+      expect((tasks[0] as Record<string, unknown>).description).toBe("Variation");
+    });
+  });
+
+  describe("scheduled and recur fields", () => {
+    it("adds a task with scheduled date", async () => {
+      await addTask(config, "Scheduled task", { scheduled: "tomorrow" });
+      const tasks = await exportTasks(config, "");
+      expect((tasks[0] as Record<string, unknown>).scheduled).toBeDefined();
+    });
+
+    it("adds a recurring task", async () => {
+      await addTask(config, "Daily standup", { due: "tomorrow", recur: "daily" });
+      const tasks = await exportTasks(config, "status:recurring");
+      expect(tasks.length).toBeGreaterThanOrEqual(1);
     });
   });
 

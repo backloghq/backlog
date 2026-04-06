@@ -49,8 +49,11 @@ Add to your project's `.claude/settings.json`:
 | Tool | Description |
 |------|-------------|
 | `task_list` | Query tasks with [filter syntax](https://taskwarrior.org/docs/filter/) |
-| `task_add` | Create a task with description, project, tags, priority, due date, agent |
+| `task_count` | Count tasks matching a filter (lightweight status check) |
+| `task_add` | Create a task with description, project, tags, priority, due, scheduled, recur, agent |
+| `task_log` | Record an already-completed task |
 | `task_modify` | Update existing task(s) |
+| `task_duplicate` | Clone a task with optional modifications |
 | `task_done` | Mark task as completed |
 | `task_delete` | Delete a task |
 | `task_annotate` | Add a note to a task |
@@ -77,6 +80,8 @@ project:backend +bug              # bugs in backend project
 priority:H due.before:friday      # high priority due before friday
 +OVERDUE                          # overdue tasks
 +ACTIVE                           # tasks currently being worked on
++BLOCKED                          # tasks blocked by dependencies
++READY                            # actionable tasks (past scheduled date)
 agent:explorer                    # tasks assigned to the explorer agent
 ```
 

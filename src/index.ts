@@ -10,6 +10,9 @@ import {
   undo,
   getUnique,
   importTasks,
+  countTasks,
+  logTask,
+  duplicateTask,
   writeDoc,
   readDoc,
   deleteDoc,
@@ -54,17 +57,21 @@ function createServer(config: TaskWarriorConfig): McpServer {
         due: z.string().optional().describe("Due date, e.g. 'tomorrow', '2025-12-31', 'eow'"),
         depends: z.string().optional().describe("UUID(s) of tasks this depends on, comma-separated"),
         wait: z.string().optional().describe("Wait date — task hidden until this date"),
+        scheduled: z.string().optional().describe("Scheduled date — when to start working on the task, e.g. 'monday', 'tomorrow'"),
+        recur: z.string().optional().describe("Recurrence frequency, e.g. 'daily', 'weekly', '2wks', 'monthly'. Requires a due date."),
         agent: z.string().optional().describe("Agent identity, e.g. 'explorer', 'planner', 'reviewer'"),
-        extra: z.string().optional().describe("Additional raw TaskWarrior attributes, e.g. '+frontend scheduled:monday'"),
+        extra: z.string().optional().describe("Additional raw TaskWarrior attributes"),
       }),
     },
-    async ({ description, project, tags, priority, due, depends, wait, agent, extra }) => {
+    async ({ description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (project) attrs.project = project;
       if (priority) attrs.priority = priority;
       if (due) attrs.due = due;
       if (depends) attrs.depends = depends;
       if (wait) attrs.wait = wait;
+      if (scheduled) attrs.scheduled = scheduled;
+      if (recur) attrs.recur = recur;
       if (agent) attrs.agent = agent;
 
       const extraArgs: string[] = [];
@@ -94,11 +101,13 @@ function createServer(config: TaskWarriorConfig): McpServer {
         due: z.string().optional().describe("New due date"),
         depends: z.string().optional().describe("New dependency UUIDs"),
         wait: z.string().optional().describe("New wait date"),
+        scheduled: z.string().optional().describe("New scheduled date"),
+        recur: z.string().optional().describe("New recurrence frequency"),
         agent: z.string().optional().describe("Agent identity, e.g. 'explorer', 'planner', 'reviewer'"),
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    async ({ filter, description, project, tags, priority, due, depends, wait, agent, extra }) => {
+    async ({ filter, description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (description) attrs.description = description;
       if (project !== undefined) attrs.project = project;
@@ -106,6 +115,8 @@ function createServer(config: TaskWarriorConfig): McpServer {
       if (due !== undefined) attrs.due = due;
       if (depends !== undefined) attrs.depends = depends;
       if (wait !== undefined) attrs.wait = wait;
+      if (scheduled !== undefined) attrs.scheduled = scheduled;
+      if (recur !== undefined) attrs.recur = recur;
       if (agent !== undefined) attrs.agent = agent;
 
       const extraArgs: string[] = [];
@@ -299,6 +310,92 @@ function createServer(config: TaskWarriorConfig): McpServer {
     },
     async ({ tasks }) => {
       const result = await importTasks(config, tasks);
+      return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_count",
+    {
+      title: "Count Tasks",
+      description: "Count tasks matching a filter. More efficient than listing when you only need the number.",
+      inputSchema: z.object({
+        filter: z.string().describe("TaskWarrior filter expression. Leave empty for all pending tasks."),
+      }),
+    },
+    async ({ filter }) => {
+      const effectiveFilter = filter || "status:pending";
+      const count = await countTasks(config, effectiveFilter);
+      return { content: [{ type: "text" as const, text: String(count) }] };
+    }
+  );
+
+  server.registerTool(
+    "task_log",
+    {
+      title: "Log Completed Task",
+      description: "Record a task that is already completed. Unlike add+done, this creates the task directly in completed state.",
+      inputSchema: z.object({
+        description: z.string().describe("Task description text"),
+        project: z.string().optional().describe("Project name"),
+        tags: z.array(z.string()).optional().describe("Tags to apply"),
+        priority: z.enum(["H", "M", "L"]).optional().describe("Priority: H/M/L"),
+        agent: z.string().optional().describe("Agent identity"),
+        extra: z.string().optional().describe("Additional raw TaskWarrior attributes"),
+      }),
+    },
+    async ({ description, project, tags, priority, agent, extra }) => {
+      const attrs: Record<string, string> = {};
+      if (project) attrs.project = project;
+      if (priority) attrs.priority = priority;
+      if (agent) attrs.agent = agent;
+
+      const extraArgs: string[] = [];
+      if (tags && tags.length > 0) {
+        extraArgs.push(...tags.map((t) => `+${t}`));
+      }
+      if (extra) {
+        extraArgs.push(...extra.split(/\s+/).filter(Boolean));
+      }
+
+      const result = await logTask(config, description, attrs, extraArgs);
+      return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_duplicate",
+    {
+      title: "Duplicate Task",
+      description: "Create a copy of an existing task, optionally with modifications.",
+      inputSchema: z.object({
+        id: z.string().describe("Task ID number or UUID to duplicate"),
+        description: z.string().optional().describe("New description (overrides original)"),
+        project: z.string().optional().describe("New project"),
+        tags: z.array(z.string()).optional().describe("Tags to add or remove"),
+        priority: z.enum(["H", "M", "L", ""]).optional().describe("New priority"),
+        due: z.string().optional().describe("New due date"),
+        agent: z.string().optional().describe("Agent identity"),
+        extra: z.string().optional().describe("Additional raw attributes"),
+      }),
+    },
+    async ({ id, description, project, tags, priority, due, agent, extra }) => {
+      const attrs: Record<string, string> = {};
+      if (description) attrs.description = description;
+      if (project !== undefined) attrs.project = project;
+      if (priority !== undefined) attrs.priority = priority;
+      if (due !== undefined) attrs.due = due;
+      if (agent !== undefined) attrs.agent = agent;
+
+      const extraArgs: string[] = [];
+      if (tags && tags.length > 0) {
+        extraArgs.push(...tags.map((t) => (t.startsWith("+") || t.startsWith("-") ? t : `+${t}`)));
+      }
+      if (extra) {
+        extraArgs.push(...extra.split(/\s+/).filter(Boolean));
+      }
+
+      const result = await duplicateTask(config, id, attrs, extraArgs);
       return { content: [{ type: "text" as const, text: result }] };
     }
   );

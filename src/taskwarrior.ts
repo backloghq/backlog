@@ -149,6 +149,41 @@ export async function importTasks(config: TaskWarriorConfig, tasksJson: string):
   }
 }
 
+export async function countTasks(config: TaskWarriorConfig, filter: string): Promise<number> {
+  const args = filter ? [...filter.split(/\s+/), "count"] : ["count"];
+  const result = await run(config, args);
+  const trimmed = result.stdout.trim();
+  return trimmed ? parseInt(trimmed, 10) : 0;
+}
+
+export async function logTask(
+  config: TaskWarriorConfig,
+  description: string,
+  attrs: Record<string, string>,
+  extraArgs: string[] = []
+): Promise<string> {
+  const args = ["log", description, ...extraArgs];
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value) args.push(`${key}:${value}`);
+  }
+  const result = await run(config, args);
+  return result.stdout.trim() || "Task logged.";
+}
+
+export async function duplicateTask(
+  config: TaskWarriorConfig,
+  id: string,
+  attrs: Record<string, string>,
+  extraArgs: string[] = []
+): Promise<string> {
+  const args = [id, "duplicate", ...extraArgs];
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value !== undefined) args.push(`${key}:${value}`);
+  }
+  const result = await run(config, args);
+  return result.stdout.trim() || "Task duplicated.";
+}
+
 function docsDir(config: TaskWarriorConfig): string {
   return join(config.taskData, "docs");
 }

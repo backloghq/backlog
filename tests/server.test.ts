@@ -67,10 +67,13 @@ describe("MCP Server integration", () => {
     expect(names).toContain("task_denotate");
     expect(names).toContain("task_purge");
     expect(names).toContain("task_import");
+    expect(names).toContain("task_count");
+    expect(names).toContain("task_log");
+    expect(names).toContain("task_duplicate");
     expect(names).toContain("task_doc_write");
     expect(names).toContain("task_doc_read");
     expect(names).toContain("task_doc_delete");
-    expect(names).toHaveLength(18);
+    expect(names).toHaveLength(21);
   });
 
   it("defaults to pending tasks when filter is empty", async () => {
@@ -355,6 +358,78 @@ describe("MCP Server integration", () => {
     const result = await call(client, "task_info", { id: "1" });
     const task = parseContent(result) as Record<string, unknown>;
     expect(task.agent).toBe("reviewer");
+  });
+
+  it("counts tasks", async () => {
+    await call(client, "task_add", { description: "A" });
+    await call(client, "task_add", { description: "B" });
+    await call(client, "task_add", { description: "C", project: "special" });
+
+    const allResult = await call(client, "task_count", { filter: "" });
+    expect((allResult.content as Array<{ text: string }>)[0].text).toBe("3");
+
+    const filteredResult = await call(client, "task_count", { filter: "project:special" });
+    expect((filteredResult.content as Array<{ text: string }>)[0].text).toBe("1");
+  });
+
+  it("logs a completed task", async () => {
+    await call(client, "task_log", {
+      description: "Already finished work",
+      project: "done-stuff",
+      tags: ["retroactive"],
+    });
+
+    const pending = await call(client, "task_list", { filter: "status:pending" });
+    expect(parseContent(pending) as Array<unknown>).toHaveLength(0);
+
+    const completed = await call(client, "task_list", { filter: "status:completed" });
+    const tasks = parseContent(completed) as Array<Record<string, unknown>>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].description).toBe("Already finished work");
+    expect(tasks[0].tags).toContain("retroactive");
+  });
+
+  it("duplicates a task with modifications", async () => {
+    await call(client, "task_add", {
+      description: "Template task",
+      project: "web",
+      priority: "M",
+    });
+
+    await call(client, "task_duplicate", {
+      id: "1",
+      description: "Cloned task",
+      project: "api",
+    });
+
+    const result = await call(client, "task_list", { filter: "project:api" });
+    const tasks = parseContent(result) as Array<Record<string, unknown>>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].description).toBe("Cloned task");
+    expect(tasks[0].priority).toBe("M"); // inherited from original
+  });
+
+  it("adds a task with scheduled date", async () => {
+    await call(client, "task_add", {
+      description: "Scheduled work",
+      scheduled: "tomorrow",
+    });
+
+    const result = await call(client, "task_info", { id: "1" });
+    const task = parseContent(result) as Record<string, unknown>;
+    expect(task.scheduled).toBeDefined();
+  });
+
+  it("adds a recurring task", async () => {
+    await call(client, "task_add", {
+      description: "Daily review",
+      due: "tomorrow",
+      recur: "daily",
+    });
+
+    const result = await call(client, "task_list", { filter: "status:recurring" });
+    const tasks = parseContent(result) as Array<unknown>;
+    expect(tasks.length).toBeGreaterThanOrEqual(1);
   });
 
   it("writes and reads a task doc", async () => {
