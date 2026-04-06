@@ -13,7 +13,12 @@ mkdir -p "$TASKDATA"
 
 INPUT=$(cat)
 
-AGENT_NAME=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('agent_name',''))" 2>/dev/null || echo "")
+# Use agent_type (e.g. "general-purpose", "backlog:task-planner")
+AGENT_NAME=$(echo "$INPUT" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(d.get('agent_type') or d.get('agent_name') or '')
+" 2>/dev/null || echo "")
 
 [ -z "$AGENT_NAME" ] && exit 0
 
