@@ -25,6 +25,7 @@ import {
   listArchiveSegments,
   type EngineConfig,
 } from "../src/engine/index.js";
+import { resolveDate } from "../src/engine/dates.js";
 describe("Engine config", () => {
   const origEnv = { ...process.env };
 
@@ -789,5 +790,43 @@ describe("Engine operations", () => {
       const tasks = await exportTasks(config, "status:pending");
       expect(tasks).toHaveLength(0); // No crash, no tasks
     });
+  });
+});
+
+describe("resolveDate", () => {
+  it("throws on invalid month", () => {
+    expect(() => resolveDate("2025-13-01")).toThrow("Invalid date");
+  });
+
+  it("throws on invalid day", () => {
+    expect(() => resolveDate("2025-01-32")).toThrow("Invalid date");
+  });
+
+  it("parses valid ISO dates", () => {
+    const d = resolveDate("2025-06-15");
+    expect(d.getFullYear()).toBe(2025);
+    expect(d.getMonth()).toBe(5); // 0-indexed
+    expect(d.getDate()).toBe(15);
+  });
+
+  it("parses compound dates like now-7d", () => {
+    const d = resolveDate("now-7d");
+    const expected = new Date(Date.now() - 7 * 86400000);
+    // Allow 5 seconds tolerance
+    expect(Math.abs(d.getTime() - expected.getTime())).toBeLessThan(5000);
+  });
+
+  it("parses compound dates like today+2w", () => {
+    const d = resolveDate("today+2w");
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expected = new Date(today.getTime() + 14 * 86400000);
+    expect(Math.abs(d.getTime() - expected.getTime())).toBeLessThan(5000);
+  });
+
+  it("parses named dates", () => {
+    expect(resolveDate("tomorrow")).toBeDefined();
+    expect(resolveDate("yesterday")).toBeDefined();
+    expect(resolveDate("eow")).toBeDefined();
   });
 });

@@ -5,7 +5,11 @@ export function resolveDate(input: string): Date {
   const lower = input.toLowerCase().trim();
 
   // ISO 8601 or date-like
-  if (/^\d{4}-\d{2}-\d{2}/.test(lower)) return new Date(input);
+  if (/^\d{4}-\d{2}-\d{2}/.test(lower)) {
+    const d = new Date(input);
+    if (isNaN(d.getTime())) throw new Error(`Invalid date: "${input}"`);
+    return d;
+  }
 
   // Compound: now-7d, now+3w, today-1m, etc.
   const compoundMatch = lower.match(/^(\w+)([+-])(\d+\w+)$/);
