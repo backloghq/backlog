@@ -123,6 +123,37 @@ function now(): string {
   return formatDate(new Date());
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PROJECT_RE = /^[a-zA-Z0-9_-]+$/;
+
+function validateAttrs(attrs: Record<string, string>): void {
+  if ("description" in attrs) {
+    const desc = attrs.description;
+    if (!desc || desc.trim().length === 0) throw new Error("Description cannot be empty.");
+    if (desc.length > 500) throw new Error("Description must be under 500 characters.");
+  }
+  if (attrs.project && !PROJECT_RE.test(attrs.project)) {
+    throw new Error("Project name must contain only letters, numbers, hyphens, and underscores.");
+  }
+  if (attrs.priority && !["H", "M", "L", ""].includes(attrs.priority)) {
+    throw new Error("Priority must be H, M, or L.");
+  }
+  if (attrs.due) {
+    try { resolveDate(attrs.due); } catch { throw new Error(`Invalid due date: '${attrs.due}'`); }
+  }
+  if (attrs.scheduled) {
+    try { resolveDate(attrs.scheduled); } catch { throw new Error(`Invalid scheduled date: '${attrs.scheduled}'`); }
+  }
+  if (attrs.wait) {
+    try { resolveDate(attrs.wait); } catch { throw new Error(`Invalid wait date: '${attrs.wait}'`); }
+  }
+  if (attrs.depends) {
+    for (const dep of attrs.depends.split(",").map((d) => d.trim())) {
+      if (!UUID_RE.test(dep)) throw new Error(`Invalid dependency UUID: '${dep}'`);
+    }
+  }
+}
+
 function nextId(): number {
   const s = getStore();
   let maxId = 0;
@@ -219,6 +250,10 @@ export async function addTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  if (!description || description.trim().length === 0) throw new Error("Description cannot be empty.");
+  if (description.length > 500) throw new Error("Description must be under 500 characters.");
+  validateAttrs(attrs);
+
   const s = getStore();
   const uuid = randomUUID();
   const timestamp = now();
@@ -256,6 +291,7 @@ export async function modifyTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  validateAttrs(attrs);
   const s = getStore();
   const allTasks = s.all();
   const predicate = compileFilter(filter);

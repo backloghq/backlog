@@ -571,6 +571,34 @@ describe("Engine operations", () => {
     });
   });
 
+  describe("input validation", () => {
+    it("rejects empty description", async () => {
+      await expect(addTask(config, "", {})).rejects.toThrow("Description cannot be empty");
+    });
+
+    it("rejects description over 500 chars", async () => {
+      await expect(addTask(config, "x".repeat(501), {})).rejects.toThrow("under 500 characters");
+    });
+
+    it("rejects invalid project name", async () => {
+      await expect(addTask(config, "Test", { project: "has spaces" })).rejects.toThrow("letters, numbers, hyphens");
+    });
+
+    it("rejects invalid date", async () => {
+      await expect(addTask(config, "Test", { due: "not-a-date-xyz" })).rejects.toThrow("Invalid due date");
+    });
+
+    it("rejects invalid dependency UUID", async () => {
+      await expect(addTask(config, "Test", { depends: "not-a-uuid" })).rejects.toThrow("Invalid dependency UUID");
+    });
+
+    it("accepts valid inputs", async () => {
+      await addTask(config, "Valid task", { project: "my-project", priority: "H", due: "friday" });
+      const tasks = await exportTasks(config, "status:pending");
+      expect(tasks).toHaveLength(1);
+    });
+  });
+
   describe("sync queue", () => {
     it("drains TaskCreated sync entries on next read", async () => {
       // Simulate what the hook script writes
