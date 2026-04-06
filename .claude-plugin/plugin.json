@@ -8,7 +8,7 @@
   "license": "MIT",
   "keywords": ["tasks", "planning", "backlog", "persistence", "agent-teams"],
   "mcpServers": {
-    "backlog": {
+    "tasks": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/start-server.sh",
       "env": {
         "TASKDATA_ROOT": "${CLAUDE_PLUGIN_DATA}/projects"
