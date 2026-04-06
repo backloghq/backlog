@@ -22,10 +22,12 @@ AGENT=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).
 
 [ -z "$SUBJECT" ] && exit 0
 
-# Build sync entry and append to queue
-ENTRY="{\"subject\":\"$(echo "$SUBJECT" | sed 's/"/\\"/g')\""
-[ -n "$AGENT" ] && ENTRY="${ENTRY},\"agent\":\"${AGENT}\""
-ENTRY="${ENTRY}}"
-
-echo "$ENTRY" >> "${TASKDATA}/sync-queue.jsonl"
+# Build sync entry using jq for safe JSON construction
+QUEUE="${TASKDATA}/sync-queue.jsonl"
+if [ -n "$AGENT" ]; then
+  ENTRY=$(jq -n --arg subject "$SUBJECT" --arg agent "$AGENT" '{subject: $subject, agent: $agent}')
+else
+  ENTRY=$(jq -n --arg subject "$SUBJECT" '{subject: $subject}')
+fi
+echo "$ENTRY" >> "$QUEUE"
 exit 0

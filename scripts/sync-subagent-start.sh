@@ -22,5 +22,6 @@ print(d.get('agent_type') or d.get('agent_name') or '')
 
 [ -z "$AGENT_NAME" ] && exit 0
 
-echo "{\"subagent_start\":\"${AGENT_NAME}\"}" >> "${TASKDATA}/sync-queue.jsonl"
+ENTRY=$(jq -n --arg subagent_start "$AGENT_NAME" '{subagent_start: $subagent_start}')
+echo "$ENTRY" >> "${TASKDATA}/sync-queue.jsonl"
 exit 0

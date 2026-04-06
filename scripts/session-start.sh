@@ -15,11 +15,12 @@ MANIFEST="${TASKDATA}/manifest.json"
 # Skip if no data exists for this project
 [ -f "$MANIFEST" ] || exit 0
 
-NODE_PATH="${PLUGIN_DATA}/node_modules" node --input-type=module -e "
+TASKDATA="$TASKDATA" NODE_PATH="${PLUGIN_DATA}/node_modules" node --input-type=module -e "
 import { Store } from '@backloghq/opslog';
 const store = new Store();
+const dataDir = process.env.TASKDATA;
 try {
-  await store.open('${TASKDATA}');
+  await store.open(dataDir);
   const all = store.all();
   const pending = all.filter(t => t.status === 'pending');
   if (pending.length === 0) { await store.close(); process.exit(0); }

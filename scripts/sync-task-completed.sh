@@ -17,5 +17,6 @@ SUBJECT=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin
 
 [ -z "$SUBJECT" ] && exit 0
 
-echo "{\"completed\":\"$(echo "$SUBJECT" | sed 's/"/\\"/g')\"}" >> "${TASKDATA}/sync-queue.jsonl"
+ENTRY=$(jq -n --arg completed "$SUBJECT" '{completed: $completed}')
+echo "$ENTRY" >> "${TASKDATA}/sync-queue.jsonl"
 exit 0
