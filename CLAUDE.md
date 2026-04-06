@@ -166,11 +166,11 @@ The filter compiler (`src/engine/filter.ts`) parses filter expressions into pred
 
 ### Date Resolution
 
-The date resolver (`src/engine/dates.ts`) converts natural language dates to ISO timestamps: `tomorrow`, `yesterday`, `eow` (end of week), `eom` (end of month), `monday`, `2025-12-31`, relative (`3d`, `2w`, `1m`), compound (`now-7d`, `today+2w`), etc.
+The date resolver (`src/engine/dates.ts`) converts natural language dates to ISO timestamps: `tomorrow`, `yesterday`, `eow` (end of week), `eom` (end of month), `monday`, `2025-12-31`, relative (`3d`, `2w`, `1m`), compound (`now-7d`, `today+2w`), etc. Compound date examples: `now-7d` (7 days ago), `today+2w` (2 weeks from today), `eow-1d` (day before end of week).
 
 ### Recurrence
 
-Tasks with `recur` and `due` fields become templates (status: `recurring`). The engine generates pending child instances lazily on read, up to 3 ahead. Children link to the parent via `parent` UUID. Completing an instance triggers generation of the next one. Supports: `daily`, `weekly`, `weekdays`, `biweekly`, `monthly`, `quarterly`, `yearly`, and numeric patterns (`3d`, `2w`).
+Tasks with `recur` and `due` fields become templates (status: `recurring`). The engine generates pending child instances lazily on read, up to 3 ahead. Children link to the parent via `parent` UUID. Completing an instance triggers generation of the next one. Supports: `daily`, `weekly`, `weekdays`, `biweekly`, `monthly`, `quarterly`, `yearly`, and numeric patterns (`3d`, `2w`). An optional `until` field sets an end date for recurrence -- no instances are generated past this date (e.g., `until: "2026-12-31"`).
 
 ### Urgency
 
