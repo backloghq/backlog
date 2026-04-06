@@ -7,6 +7,18 @@ export function resolveDate(input: string): Date {
   // ISO 8601 or date-like
   if (/^\d{4}-\d{2}-\d{2}/.test(lower)) return new Date(input);
 
+  // Compound: now-7d, now+3w, today-1m, etc.
+  const compoundMatch = lower.match(/^(\w+)([+-])(\d+\w+)$/);
+  if (compoundMatch) {
+    const base = resolveDate(compoundMatch[1]);
+    const sign = compoundMatch[2] === "+" ? 1 : -1;
+    const offset = parseRelative(compoundMatch[3]);
+    if (offset) {
+      const diffMs = offset.getTime() - now.getTime();
+      return new Date(base.getTime() + sign * diffMs);
+    }
+  }
+
   // Named dates
   switch (lower) {
     case "now": return now;
