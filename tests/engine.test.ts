@@ -118,6 +118,26 @@ describe("Engine operations", () => {
       const ids = tasks.map((t) => t.id).sort();
       expect(ids).toEqual([1, 2, 3]);
     });
+
+    it("IDs are stable after deletions", async () => {
+      await addTask(config, "One", {});
+      await addTask(config, "Two", {});
+      await addTask(config, "Three", {});
+
+      // Delete task 2
+      await taskCommand(config, "2", "delete");
+
+      // Task 1 and 3 keep their IDs
+      const tasks = await exportTasks(config, "status:pending");
+      expect(tasks).toHaveLength(2);
+      expect(tasks.find((t) => t.description === "One")?.id).toBe(1);
+      expect(tasks.find((t) => t.description === "Three")?.id).toBe(3);
+
+      // New task gets ID 4, not 3
+      await addTask(config, "Four", {});
+      const after = await exportTasks(config, "status:pending");
+      expect(after.find((t) => t.description === "Four")?.id).toBe(4);
+    });
   });
 
   describe("filters", () => {

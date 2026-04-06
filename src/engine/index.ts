@@ -68,21 +68,13 @@ function now(): string {
   return formatDate(new Date());
 }
 
-function assignIds(tasks: Task[]): void {
-  // Assign sequential IDs to pending/recurring tasks, 0 for others
-  const pending = tasks
-    .filter((t) => t.status === "pending" || t.status === "recurring")
-    .sort((a, b) => a.entry.localeCompare(b.entry));
-  let nextId = 1;
-  for (const t of pending) {
-    t.id = nextId++;
+function nextId(): number {
+  const s = getStore();
+  let maxId = 0;
+  for (const task of s.all()) {
+    if (task.id > maxId) maxId = task.id;
   }
-  // Non-pending get id 0
-  for (const t of tasks) {
-    if (t.status !== "pending" && t.status !== "recurring") {
-      t.id = 0;
-    }
-  }
+  return maxId + 1;
 }
 
 function computeUrgency(t: Task, allTasks: Task[]): number {
@@ -150,7 +142,6 @@ function computeUrgency(t: Task, allTasks: Task[]): number {
 export async function exportTasks(_config: EngineConfig, filter: string): Promise<Task[]> {
   const s = getStore();
   const allTasks = s.all();
-  assignIds(allTasks);
   allTasks.forEach((t) => { t.urgency = computeUrgency(t, allTasks); });
 
   const predicate = compileFilter(filter);
@@ -174,7 +165,7 @@ export async function addTask(
 
   const task: Task = {
     uuid,
-    id: 0,
+    id: nextId(),
     description,
     status: attrs.recur ? "recurring" : "pending",
     entry: timestamp,
@@ -202,7 +193,6 @@ export async function modifyTask(
 ): Promise<string> {
   const s = getStore();
   const allTasks = s.all();
-  assignIds(allTasks);
   const predicate = compileFilter(filter);
   const matches = allTasks.filter(predicate);
 
@@ -318,7 +308,7 @@ export async function logTask(
 
   const task: Task = {
     uuid,
-    id: 0,
+    id: nextId(),
     description,
     status: "completed",
     entry: timestamp,
@@ -348,7 +338,7 @@ export async function duplicateTask(
   const newTask: Task = {
     ...task,
     uuid,
-    id: 0,
+    id: nextId(),
     entry: timestamp,
     modified: timestamp,
     start: undefined,
@@ -387,7 +377,7 @@ export async function importTasks(_config: EngineConfig, tasksJson: string): Pro
       const timestamp = now();
       const task: Task = {
         uuid,
-        id: 0,
+        id: nextId(),
         description: raw.description as string,
         status: (raw.status as Task["status"]) || "pending",
         entry: (raw.entry as string) || timestamp,
@@ -474,9 +464,7 @@ function findTask(id: string): Task | undefined {
   // Try as numeric ID
   const numId = parseInt(id, 10);
   if (!isNaN(numId)) {
-    const allTasks = s.all();
-    assignIds(allTasks);
-    return allTasks.find((t) => t.id === numId);
+    return s.all().find((t) => t.id === numId);
   }
 
   return undefined;
