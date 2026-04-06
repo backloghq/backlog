@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, access, writeFile, readFile, unlink, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
 export interface TaskWarriorConfig {
@@ -20,13 +21,26 @@ const RC_OVERRIDES = [
   "rc.verbose=nothing",
 ];
 
+export function deriveProjectSlug(cwd: string): string {
+  const name = basename(cwd).replace(/[^a-zA-Z0-9_-]/g, "-");
+  const hash = createHash("md5").update(cwd).digest("hex").substring(0, 8);
+  return `${name}-${hash}`;
+}
+
 export function getConfig(): TaskWarriorConfig {
-  const taskData = process.env.TASKDATA;
+  let taskData = process.env.TASKDATA;
+
   if (!taskData) {
-    throw new Error(
-      "TASKDATA environment variable is required. " +
-        "Set it to a project-specific directory, e.g. ~/.local/share/taskwarrior-mcp/my-project"
-    );
+    const taskDataRoot = process.env.TASKDATA_ROOT;
+    if (taskDataRoot) {
+      const slug = deriveProjectSlug(process.cwd());
+      taskData = join(taskDataRoot, slug);
+    } else {
+      throw new Error(
+        "TASKDATA or TASKDATA_ROOT environment variable is required. " +
+          "Set TASKDATA to a project-specific directory, or TASKDATA_ROOT to auto-derive from the working directory."
+      );
+    }
   }
 
   return {

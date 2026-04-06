@@ -1,10 +1,9 @@
 {
   "mcpServers": {
     "taskwarrior": {
-      "command": "node",
-      "args": ["/home/mbocevski/dev/agent-teams-task-mcp/dist/index.js"],
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/start-server.sh",
       "env": {
-        "TASKDATA": "/home/mbocevski/.local/share/taskwarrior-mcp/agent-teams-task-mcp"
+        "TASKDATA_ROOT": "${CLAUDE_PLUGIN_DATA}/projects"
       }
     }
   }

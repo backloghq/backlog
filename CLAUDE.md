@@ -1,6 +1,6 @@
-# TaskWarrior MCP Server
+# backlog — TaskWarrior MCP Plugin
 
-MCP server that exposes [TaskWarrior](https://taskwarrior.org/) (v3.x) as tools for Claude Code and agent teams, enabling persistent cross-session task management.
+Claude Code plugin and MCP server that exposes [TaskWarrior](https://taskwarrior.org/) (v3.x) as tools for Claude Code and agent teams, enabling persistent cross-session task management.
 
 ## Purpose
 
@@ -10,23 +10,12 @@ Claude Code sessions are ephemeral — task context dies with the conversation. 
 
 Each project gets its own TaskWarrior data directory — full filesystem-level isolation. No filter scoping tricks, no accidental cross-project leaks.
 
-The MCP server config sets `TASKDATA` per project:
+Two modes:
 
-```json
-{
-  "mcpServers": {
-    "taskwarrior": {
-      "command": "node",
-      "args": ["/path/to/dist/index.js"],
-      "env": { "TASKDATA": "/home/user/.local/share/taskwarrior-mcp/my-project" }
-    }
-  }
-}
-```
+- **Plugin mode** (`TASKDATA_ROOT`): Auto-derives a project-specific subdirectory from the working directory. E.g., `TASKDATA_ROOT=/data/projects` + CWD `/home/user/dev/my-app` → `/data/projects/my-app-a1b2c3d4/`. The slug is `<basename>-<md5(cwd)[0:8]>`.
+- **Standalone mode** (`TASKDATA`): Explicit path to task data directory. Takes precedence over `TASKDATA_ROOT`.
 
-Convention for data directories: `~/.local/share/taskwarrior-mcp/<project-name>/`. The server auto-creates the directory and a minimal `.taskrc` if they don't exist on first run, so there's zero manual setup per project.
-
-If `TASKDATA` is not set, the server refuses to start — there is no implicit default. This prevents accidentally writing to the user's personal TaskWarrior database.
+If neither is set, the server refuses to start. The server auto-creates the directory and a minimal `.taskrc` on first run.
 
 ## Architecture
 
@@ -132,7 +121,9 @@ task rc.confirmation=off rc.bulk=0 add "description" project:foo +tag priority:H
 
 ### Environment variables
 
-- `TASKDATA` — **(required)** path to project-specific task data directory. Server refuses to start without it. Convention: `~/.local/share/taskwarrior-mcp/<project-name>/`.
+- `TASKDATA` — explicit path to project-specific task data directory. Takes precedence over `TASKDATA_ROOT`.
+- `TASKDATA_ROOT` — root directory for auto-derived per-project task data. Server creates `<root>/<project-slug>/` based on CWD.
+- One of `TASKDATA` or `TASKDATA_ROOT` is required. Server refuses to start without either.
 - `TASKRC` — path to `.taskrc` config file. If not set, the server auto-creates a minimal one inside `TASKDATA`.
 - `TASK_BIN` — path to `task` binary (default: `task` from PATH)
 
@@ -156,8 +147,12 @@ node dist/index.js   # run directly for testing
 
 ### Claude Code Integration
 
-Add to project `.claude/settings.json` (each project gets its own isolated task data):
+**As a plugin** (recommended):
+```bash
+claude --plugin-dir /path/to/agent-teams-task-mcp
+```
 
+**As a standalone MCP server** (per-project `.claude/settings.json`):
 ```json
 {
   "mcpServers": {

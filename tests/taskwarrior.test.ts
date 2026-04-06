@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { access } from "node:fs/promises";
 import {
   getConfig,
+  deriveProjectSlug,
   ensureSetup,
   run,
   exportTasks,
@@ -38,19 +39,38 @@ describe("getConfig", () => {
     process.env = { ...origEnv };
   });
 
-  it("throws when TASKDATA is not set", () => {
+  it("throws when neither TASKDATA nor TASKDATA_ROOT is set", () => {
     delete process.env.TASKDATA;
-    expect(() => getConfig()).toThrow("TASKDATA environment variable is required");
+    delete process.env.TASKDATA_ROOT;
+    expect(() => getConfig()).toThrow("TASKDATA or TASKDATA_ROOT environment variable is required");
   });
 
   it("returns config when TASKDATA is set", () => {
     process.env.TASKDATA = "/tmp/test-tasks";
+    delete process.env.TASKDATA_ROOT;
     delete process.env.TASKRC;
     delete process.env.TASK_BIN;
     const config = getConfig();
     expect(config.taskData).toBe("/tmp/test-tasks");
     expect(config.taskRc).toBe("/tmp/test-tasks/.taskrc");
     expect(config.taskBin).toBe("task");
+  });
+
+  it("derives TASKDATA from TASKDATA_ROOT and CWD", () => {
+    delete process.env.TASKDATA;
+    process.env.TASKDATA_ROOT = "/tmp/projects";
+    delete process.env.TASKRC;
+    delete process.env.TASK_BIN;
+    const config = getConfig();
+    expect(config.taskData).toMatch(/^\/tmp\/projects\/.+-[a-f0-9]{8}$/);
+    expect(config.taskRc).toMatch(/\.taskrc$/);
+  });
+
+  it("prefers TASKDATA over TASKDATA_ROOT", () => {
+    process.env.TASKDATA = "/tmp/explicit";
+    process.env.TASKDATA_ROOT = "/tmp/projects";
+    const config = getConfig();
+    expect(config.taskData).toBe("/tmp/explicit");
   });
 
   it("respects TASKRC and TASK_BIN env vars", () => {
@@ -60,6 +80,23 @@ describe("getConfig", () => {
     const config = getConfig();
     expect(config.taskRc).toBe("/tmp/custom.taskrc");
     expect(config.taskBin).toBe("/usr/local/bin/task");
+  });
+
+  it("derives consistent slugs for the same path", () => {
+    const slug1 = deriveProjectSlug("/home/user/dev/my-project");
+    const slug2 = deriveProjectSlug("/home/user/dev/my-project");
+    expect(slug1).toBe(slug2);
+  });
+
+  it("derives different slugs for different paths", () => {
+    const slug1 = deriveProjectSlug("/home/user/dev/project-a");
+    const slug2 = deriveProjectSlug("/home/user/dev/project-b");
+    expect(slug1).not.toBe(slug2);
+  });
+
+  it("handles special characters in path names", () => {
+    const slug = deriveProjectSlug("/home/user/dev/my project (v2)");
+    expect(slug).toMatch(/^my-project--v2--[a-f0-9]{8}$/);
   });
 });
 
