@@ -1,10 +1,10 @@
 import { resolveDate, isOverdue, isDueToday, isDueThisWeek, isDueThisMonth, isDueThisQuarter, isDueThisYear } from "./dates.js";
-export function compileFilter(filter) {
+export function compileFilter(filter, taskGetter) {
     const trimmed = filter.trim();
     if (!trimmed)
         return () => true;
     const tokens = tokenize(trimmed);
-    return buildPredicate(tokens);
+    return buildPredicate(tokens, taskGetter);
 }
 function tokenize(input) {
     const tokens = [];
@@ -90,43 +90,43 @@ function splitRespectingParens(input) {
         parts.push(current.trim());
     return parts;
 }
-function buildPredicate(tokens) {
+function buildPredicate(tokens, taskGetter) {
     if (tokens.length === 0)
         return () => true;
     // Parse with OR having lowest precedence
-    const { predicate, rest } = parseOr(tokens, 0);
+    const { predicate, rest } = parseOr(tokens, 0, taskGetter);
     if (rest < tokens.length) {
         // Remaining tokens — combine with AND
-        const remaining = buildPredicate(tokens.slice(rest));
+        const remaining = buildPredicate(tokens.slice(rest), taskGetter);
         return (t) => predicate(t) && remaining(t);
     }
     return predicate;
 }
-function parseOr(tokens, pos) {
-    let { predicate: left, rest: nextPos } = parseAnd(tokens, pos);
+function parseOr(tokens, pos, taskGetter) {
+    let { predicate: left, rest: nextPos } = parseAnd(tokens, pos, taskGetter);
     while (nextPos < tokens.length && tokens[nextPos].type === "or") {
-        const { predicate: right, rest: afterRight } = parseAnd(tokens, nextPos + 1);
+        const { predicate: right, rest: afterRight } = parseAnd(tokens, nextPos + 1, taskGetter);
         const prevLeft = left;
         left = (t) => prevLeft(t) || right(t);
         nextPos = afterRight;
     }
     return { predicate: left, rest: nextPos };
 }
-function parseAnd(tokens, pos) {
-    let { predicate: left, rest: nextPos } = parsePrimary(tokens, pos);
+function parseAnd(tokens, pos, taskGetter) {
+    let { predicate: left, rest: nextPos } = parsePrimary(tokens, pos, taskGetter);
     while (nextPos < tokens.length) {
         const tok = tokens[nextPos];
         if (tok.type === "or" || tok.type === "rparen")
             break;
         if (tok.type === "and") {
-            const { predicate: right, rest: afterRight } = parsePrimary(tokens, nextPos + 1);
+            const { predicate: right, rest: afterRight } = parsePrimary(tokens, nextPos + 1, taskGetter);
             const prevLeft = left;
             left = (t) => prevLeft(t) && right(t);
             nextPos = afterRight;
         }
         else {
             // Implicit AND
-            const { predicate: right, rest: afterRight } = parsePrimary(tokens, nextPos);
+            const { predicate: right, rest: afterRight } = parsePrimary(tokens, nextPos, taskGetter);
             const prevLeft = left;
             left = (t) => prevLeft(t) && right(t);
             nextPos = afterRight;
@@ -134,22 +134,22 @@ function parseAnd(tokens, pos) {
     }
     return { predicate: left, rest: nextPos };
 }
-function parsePrimary(tokens, pos) {
+function parsePrimary(tokens, pos, taskGetter) {
     if (pos >= tokens.length)
         return { predicate: () => true, rest: pos };
     const tok = tokens[pos];
     if (tok.type === "lparen") {
-        const { predicate, rest } = parseOr(tokens, pos + 1);
+        const { predicate, rest } = parseOr(tokens, pos + 1, taskGetter);
         // Skip rparen
         const afterParen = rest < tokens.length && tokens[rest].type === "rparen" ? rest + 1 : rest;
         return { predicate, rest: afterParen };
     }
-    return { predicate: tokenToPredicate(tok), rest: pos + 1 };
+    return { predicate: tokenToPredicate(tok, taskGetter), rest: pos + 1 };
 }
-function tokenToPredicate(token) {
+function tokenToPredicate(token, taskGetter) {
     switch (token.type) {
         case "tag": return tagPredicate(token.name, token.positive);
-        case "vtag": return virtualTagPredicate(token.name, token.positive);
+        case "vtag": return virtualTagPredicate(token.name, token.positive, taskGetter);
         case "attr": return attrPredicate(token.name, token.modifier, token.value);
         case "text": return textPredicate(token.raw);
         default: return () => true;
@@ -161,11 +161,11 @@ function tagPredicate(name, positive) {
         return positive ? has : !has;
     };
 }
-function virtualTagPredicate(name, positive) {
-    const check = virtualTagCheck(name);
+function virtualTagPredicate(name, positive, taskGetter) {
+    const check = virtualTagCheck(name, taskGetter);
     return (t) => positive ? check(t) : !check(t);
 }
-function virtualTagCheck(name) {
+function virtualTagCheck(name, taskGetter) {
     switch (name) {
         case "PENDING": return (t) => t.status === "pending";
         case "COMPLETED": return (t) => t.status === "completed";
@@ -173,10 +173,10 @@ function virtualTagCheck(name) {
         case "WAITING": return (t) => t.status === "waiting" || (t.status === "pending" && !!t.wait && new Date(t.wait) > new Date());
         case "RECURRING": return (t) => t.status === "recurring";
         case "ACTIVE": return (t) => !!t.start;
-        case "BLOCKED": return (t) => blockedCheck(t);
+        case "BLOCKED": return (t) => blockedCheck(t, taskGetter);
         case "BLOCKING": return (t) => !!t._blocking;
-        case "UNBLOCKED": return (t) => !blockedCheck(t);
-        case "READY": return (t) => t.status === "pending" && !blockedCheck(t) && (!t.scheduled || new Date(t.scheduled) <= new Date());
+        case "UNBLOCKED": return (t) => !blockedCheck(t, taskGetter);
+        case "READY": return (t) => t.status === "pending" && !blockedCheck(t, taskGetter) && (!t.scheduled || new Date(t.scheduled) <= new Date());
         case "OVERDUE": return (t) => !!t.due && isOverdue(t.due);
         case "TODAY": return (t) => !!t.due && isDueToday(t.due);
         case "TOMORROW": return (t) => {
@@ -209,8 +209,18 @@ function virtualTagCheck(name) {
         default: return () => false;
     }
 }
-function blockedCheck(t) {
-    return !!t.depends && t.depends.length > 0;
+function blockedCheck(t, taskGetter) {
+    if (!t.depends || t.depends.length === 0)
+        return false;
+    if (!taskGetter) {
+        // Without task lookup, fall back to checking if deps exist
+        return true;
+    }
+    return t.depends.some((uuid) => {
+        const dep = taskGetter(uuid);
+        // Blocked if dep not found (could be external) or dep is still pending/waiting/recurring
+        return !dep || (dep.status !== "completed" && dep.status !== "deleted");
+    });
 }
 function attrPredicate(name, modifier, value) {
     return (t) => {

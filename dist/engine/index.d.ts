@@ -1,4 +1,6 @@
 import type { Task } from "./types.js";
+export declare const VALID_STATUSES: readonly ["pending", "completed", "deleted", "recurring", "waiting"];
+export declare const VALID_PRIORITIES: readonly ["H", "M", "L"];
 export interface EngineConfig {
     dataDir: string;
 }

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0 (2026-04-07)
+
+### Fixed
+- **Shell injection in sync hooks** — replaced manual `sed` JSON escaping with `jq -n` in all sync scripts; `session-start.sh` now uses `process.env.TASKDATA` instead of shell interpolation into inline JS
+- **blockedCheck false positives** — `+BLOCKED` now checks whether dependencies are actually unresolved, not just whether they exist. Tasks with all dependencies completed are no longer marked blocked
+- **Date validation** — ISO date regex now rejects invalid month/day values (e.g., `2025-13-45`) with a descriptive error
+- **has_doc type** — changed from `string` to `boolean` for type safety
+
+### Added
+- **Status/priority validation** — `modifyTask` and `importTasks` now validate status and priority enum values before accepting them; invalid values throw descriptive errors
+- **Reverse dependency index** — `computeUrgency` blocking check is now O(1) instead of O(n) per task; numeric ID lookup in `findTask` is also O(1) via index
+- **Sync queue type guard** — malformed JSON entries in the sync queue are safely skipped
+- **13 new tests** — validation errors, blocked dependency resolution, invalid dates, compound dates
+- **CLAUDE.md docs** — `until` field for recurrence end dates, compound date examples (`now-7d`, `today+2w`, `eow-1d`)
+
+### Changed
+- Upgraded `@backloghq/opslog` from 0.1.0 to 0.1.1 (JSON validation, archive merge fix, defensive batch rollback)
+- Pinned TypeScript to `~6.0.2`
+
 ## 1.0.0
 
 Initial release.

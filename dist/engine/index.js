@@ -6,6 +6,8 @@ import { Store } from "@backloghq/opslog";
 import { compileFilter } from "./filter.js";
 import { resolveDate, formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
+export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring", "waiting"];
+export const VALID_PRIORITIES = ["H", "M", "L"];
 export function deriveProjectSlug(cwd) {
     const name = basename(cwd).replace(/[^a-zA-Z0-9_-]/g, "-");
     const hash = createHash("md5").update(cwd).digest("hex").substring(0, 8);
@@ -62,7 +64,10 @@ async function drainSyncQueue() {
     const s = getStore();
     for (const line of lines) {
         try {
-            const entry = JSON.parse(line);
+            const parsed = JSON.parse(line);
+            if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+                continue;
+            const entry = parsed;
             if (entry.subject) {
                 // TaskCreated sync
                 const uuid = randomUUID();
@@ -166,7 +171,37 @@ function nextId() {
     }
     return maxId + 1;
 }
-function computeUrgency(t, allTasks) {
+/**
+ * Build a reverse dependency index: maps each UUID to the list of
+ * pending task UUIDs that depend on it. O(n) build, O(1) lookup.
+ */
+function buildBlockingIndex(tasks) {
+    const index = new Map();
+    for (const task of tasks) {
+        if (task.status !== "pending" || !task.depends)
+            continue;
+        for (const depUuid of task.depends) {
+            let list = index.get(depUuid);
+            if (!list) {
+                list = [];
+                index.set(depUuid, list);
+            }
+            list.push(task.uuid);
+        }
+    }
+    return index;
+}
+/**
+ * Build a numeric ID index: maps task ID to UUID. O(n) build, O(1) lookup.
+ */
+function buildIdIndex(tasks) {
+    const index = new Map();
+    for (const task of tasks) {
+        index.set(task.id, task.uuid);
+    }
+    return index;
+}
+function computeUrgency(t, tasksByUuid, blockingIndex) {
     let urgency = 0;
     // Priority
     if (t.priority === "H")
@@ -192,15 +227,15 @@ function computeUrgency(t, allTasks) {
     // Blocked (has unresolved deps)
     if (t.depends && t.depends.length > 0) {
         const blocked = t.depends.some((depUuid) => {
-            const dep = allTasks.find((d) => d.uuid === depUuid);
+            const dep = tasksByUuid.get(depUuid);
             return dep && dep.status === "pending";
         });
         if (blocked)
             urgency -= 5.0;
     }
-    // Blocking (other tasks depend on this)
-    const isBlocking = allTasks.some((other) => other.depends?.includes(t.uuid) && other.status === "pending");
-    if (isBlocking) {
+    // Blocking (other tasks depend on this) — O(1) lookup via index
+    const dependents = blockingIndex.get(t.uuid);
+    if (dependents && dependents.length > 0) {
         urgency += 8.0;
         t._blocking = true;
     }
@@ -235,10 +270,12 @@ export async function exportTasks(_config, filter) {
         await s.set(instance.uuid, instance);
     }
     const updatedTasks = s.all();
-    updatedTasks.forEach((t) => { t.urgency = computeUrgency(t, updatedTasks); });
+    const tasksByUuid = new Map(updatedTasks.map((t) => [t.uuid, t]));
+    const blockingIndex = buildBlockingIndex(updatedTasks);
+    updatedTasks.forEach((t) => { t.urgency = computeUrgency(t, tasksByUuid, blockingIndex); });
     // Strip internal fields before returning
     updatedTasks.forEach((t) => { delete t._blocking; });
-    const predicate = compileFilter(filter);
+    const predicate = compileFilter(filter, (uuid) => tasksByUuid.get(uuid));
     return updatedTasks.filter(predicate);
 }
 export async function addTask(_config, description, attrs, extraArgs = []) {
@@ -279,7 +316,8 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
     validateAttrs(attrs);
     const s = getStore();
     const allTasks = s.all();
-    const predicate = compileFilter(filter);
+    const tasksByUuid = new Map(allTasks.map((t) => [t.uuid, t]));
+    const predicate = compileFilter(filter, (uuid) => tasksByUuid.get(uuid));
     const matches = allTasks.filter(predicate);
     if (matches.length === 0)
         return "No matching tasks.";
@@ -305,11 +343,20 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
         if (attrs.agent !== undefined)
             updated.agent = attrs.agent || undefined;
         if (attrs.has_doc !== undefined)
-            updated.has_doc = attrs.has_doc || undefined;
+            updated.has_doc = attrs.has_doc ? true : undefined;
         if (attrs.end !== undefined)
             updated.end = attrs.end || undefined;
-        if (attrs.status !== undefined)
+        if (attrs.status !== undefined) {
+            if (!VALID_STATUSES.includes(attrs.status)) {
+                throw new Error(`Invalid status: '${attrs.status}'. Must be one of: ${VALID_STATUSES.join(", ")}`);
+            }
             updated.status = attrs.status;
+        }
+        if (attrs.priority !== undefined && attrs.priority !== "") {
+            if (!VALID_PRIORITIES.includes(attrs.priority)) {
+                throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
+            }
+        }
         // Handle tag args
         for (const arg of extraArgs) {
             if (arg.startsWith("+")) {
@@ -458,11 +505,15 @@ export async function importTasks(_config, tasksJson) {
         for (const raw of tasks) {
             const uuid = raw.uuid || randomUUID();
             const timestamp = now();
+            const rawStatus = raw.status || "pending";
+            if (!VALID_STATUSES.includes(rawStatus)) {
+                throw new Error(`Invalid status '${rawStatus}' in imported task. Must be one of: ${VALID_STATUSES.join(", ")}`);
+            }
             const task = {
                 uuid,
                 id: nextId(),
                 description: raw.description,
-                status: raw.status || "pending",
+                status: rawStatus,
                 entry: raw.entry || timestamp,
                 modified: timestamp,
             };
@@ -470,8 +521,13 @@ export async function importTasks(_config, tasksJson) {
                 task.project = raw.project;
             if (raw.tags)
                 task.tags = raw.tags;
-            if (raw.priority)
-                task.priority = raw.priority;
+            if (raw.priority) {
+                const rawPriority = raw.priority;
+                if (!VALID_PRIORITIES.includes(rawPriority)) {
+                    throw new Error(`Invalid priority '${rawPriority}' in imported task. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
+                }
+                task.priority = rawPriority;
+            }
             if (raw.due)
                 task.due = raw.due;
             if (raw.agent)
@@ -510,7 +566,7 @@ export async function writeDoc(_config, id, content) {
         throw new Error(`No task found matching '${id}'`);
     await mkdir(docsDir(), { recursive: true });
     await writeFile(docPath(task.uuid), content, "utf-8");
-    await modifyTask(_config, task.uuid, { has_doc: "yes" }, ["+doc"]);
+    await modifyTask(_config, task.uuid, { has_doc: "true" }, ["+doc"]);
     return `Doc written for task ${task.uuid}.`;
 }
 export async function readDoc(_config, id) {
@@ -562,10 +618,12 @@ function findTask(id) {
     const byUuid = s.get(id);
     if (byUuid)
         return byUuid;
-    // Try as numeric ID
+    // Try as numeric ID using index for O(1) lookup
     const numId = parseInt(id, 10);
     if (!isNaN(numId)) {
-        return s.all().find((t) => t.id === numId);
+        const idIndex = buildIdIndex(s.all());
+        const uuid = idIndex.get(numId);
+        return uuid ? s.get(uuid) : undefined;
     }
     return undefined;
 }

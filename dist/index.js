@@ -339,7 +339,7 @@ function createServer(config) {
     server.registerTool("task_doc_write", {
         title: "Write Task Doc",
         description: "Attach or update a document (spec, notes, context) to a task. " +
-            "Stored as a markdown file. Automatically adds +doc tag and has_doc:yes to the task.",
+            "Stored as a markdown file. Automatically adds +doc tag and has_doc:true to the task.",
         inputSchema: z.object({
             id: z.string().describe("Task ID number or UUID"),
             content: z.string().describe("Document content (markdown)"),
