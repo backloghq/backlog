@@ -40,6 +40,18 @@ Add to your project's `.claude/settings.json`:
 | `/backlog:plan` | Break down a goal into tasks with dependencies, priorities, and specs |
 | `/backlog:handoff` | Prepare for next session — annotate progress, stop active tasks, summarize state |
 
+## Agent
+
+The `task-planner` agent can be auto-invoked by Claude when someone needs to plan work. It reads the codebase, decomposes goals into tasks with dependencies, and writes specs for complex items.
+
+## Hooks
+
+| Event | What it does |
+|-------|-------------|
+| `SessionStart` | Shows pending task count when a session begins |
+| `TaskCreated` | Syncs Claude's built-in tasks to the persistent backlog |
+| `TaskCompleted` | Marks the matching backlog task as done when Claude completes a built-in task |
+
 ## Tools (MCP)
 
 21 tools for full task lifecycle management:
