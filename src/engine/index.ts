@@ -98,6 +98,14 @@ async function drainSyncQueue(): Promise<void> {
         if (match) {
           await s.set(match.uuid, { ...match, status: "completed", end: now(), modified: now() });
         }
+      } else if (entry.subagent_start) {
+        // SubagentStart sync — assign unassigned pending tasks to the agent
+        const agentName = entry.subagent_start;
+        for (const task of s.all()) {
+          if (task.status === "pending" && !task.agent) {
+            await s.set(task.uuid, { ...task, agent: agentName, modified: now() });
+          }
+        }
       }
     } catch {
       // Skip malformed entries

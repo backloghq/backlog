@@ -614,6 +614,24 @@ describe("Engine operations", () => {
       await expect(ac(queuePath)).rejects.toThrow();
     });
 
+    it("drains SubagentStart sync entries — assigns unassigned tasks", async () => {
+      await addTask(config, "Unassigned task", {});
+      await addTask(config, "Already assigned", { agent: "planner" });
+
+      const { writeFile: wf } = await import("node:fs/promises");
+      await wf(
+        join(tmpDir, "sync-queue.jsonl"),
+        '{"subagent_start":"explorer"}\n',
+        "utf-8",
+      );
+
+      const tasks = await exportTasks(config, "status:pending");
+      const unassigned = tasks.find((t) => t.description === "Unassigned task");
+      const assigned = tasks.find((t) => t.description === "Already assigned");
+      expect(unassigned?.agent).toBe("explorer");
+      expect(assigned?.agent).toBe("planner"); // unchanged
+    });
+
     it("handles empty or missing queue file gracefully", async () => {
       const tasks = await exportTasks(config, "status:pending");
       expect(tasks).toHaveLength(0); // No crash, no tasks
