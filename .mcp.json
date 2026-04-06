@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "taskwarrior": {
+      "command": "node",
+      "args": ["/home/mbocevski/dev/agent-teams-task-mcp/dist/index.js"],
+      "env": {
+        "TASKDATA": "/home/mbocevski/.local/share/taskwarrior-mcp/agent-teams-task-mcp"
+      }
+    }
+  }
+}
