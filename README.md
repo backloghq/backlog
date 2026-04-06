@@ -38,6 +38,7 @@ Add to your project's `.claude/settings.json`:
 |-------|-------------|
 | `/backlog:tasks` | Show the current backlog — pending, active, blocked, overdue tasks |
 | `/backlog:plan` | Break down a goal into tasks with dependencies, priorities, and specs |
+| `/backlog:standup` | Daily standup — done, in progress, blocked, up next |
 | `/backlog:handoff` | Prepare for next session — annotate progress, stop active tasks, summarize state |
 
 ## Agent
