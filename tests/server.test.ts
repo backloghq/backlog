@@ -6,16 +6,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   ensureSetup,
-  type TaskWarriorConfig,
-} from "../src/taskwarrior.js";
+  shutdown,
+  type TaskWarriorConfig as EngineConfig,
+} from "../src/engine/index.js";
 import { createServer } from "../src/index.js";
 
-function makeConfig(taskData: string): TaskWarriorConfig {
-  return {
-    taskBin: "task",
-    taskData,
-    taskRc: join(taskData, ".taskrc"),
-  };
+function makeConfig(taskData: string): EngineConfig {
+  return { dataDir: taskData };
 }
 
 function call(client: Client, name: string, args: Record<string, unknown> = {}) {
@@ -28,7 +25,7 @@ function parseContent(result: Awaited<ReturnType<Client["callTool"]>>): unknown 
 
 describe("MCP Server integration", () => {
   let tmpDir: string;
-  let config: TaskWarriorConfig;
+  let config: EngineConfig;
   let client: Client;
 
   beforeEach(async () => {
@@ -46,6 +43,7 @@ describe("MCP Server integration", () => {
 
   afterEach(async () => {
     await client.close();
+    await shutdown();
     await rm(tmpDir, { recursive: true, force: true });
   });
 

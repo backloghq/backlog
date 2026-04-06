@@ -3,6 +3,7 @@ import * as z from "zod";
 import {
   getConfig,
   ensureSetup,
+  shutdown,
   exportTasks,
   addTask,
   modifyTask,
@@ -17,7 +18,7 @@ import {
   readDoc,
   deleteDoc,
   type TaskWarriorConfig,
-} from "./taskwarrior.js";
+} from "./engine/index.js";
 
 function parseTags(tags: string | undefined): string[] {
   if (!tags) return [];
@@ -231,7 +232,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
       inputSchema: z.object({}),
     },
     async () => {
-      const result = await undo(config);
+      const result = await undo();
       return { content: [{ type: "text" as const, text: result }] };
     }
   );
@@ -480,7 +481,16 @@ async function main(): Promise<void> {
   const server = createServer(config);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("taskwarrior-mcp server running on stdio");
+  console.error("backlog-engine MCP server running on stdio");
+
+  process.on("SIGINT", async () => {
+    await shutdown();
+    process.exit(0);
+  });
+  process.on("SIGTERM", async () => {
+    await shutdown();
+    process.exit(0);
+  });
 }
 
 // Only run when executed directly, not when imported as a module
