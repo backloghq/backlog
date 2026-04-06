@@ -4,10 +4,16 @@ Persistent, cross-session task management for Claude Code. Tasks survive session
 
 Zero external dependencies — pure TypeScript with event-sourced storage. Install and it works.
 
-## Install as Claude Code Plugin
+## Install
+
+```
+/plugin marketplace add backloghq/backlog
+/plugin install backlog@backloghq-backlog
+```
+
+### From source
 
 ```bash
-# Clone, build, and load
 git clone https://github.com/backloghq/backlog.git
 cd backlog && npm install && npm run build
 claude --plugin-dir /path/to/backlog
