@@ -385,7 +385,7 @@ describe("Engine operations", () => {
       await writeDoc(config, "1", "Some doc");
       const tasks = await exportTasks(config, "+doc");
       expect(tasks).toHaveLength(1);
-      expect(tasks[0].has_doc).toBe("yes");
+      expect(tasks[0].has_doc).toBe(true);
     });
 
     it("returns null for task without doc", async () => {
@@ -648,6 +648,26 @@ describe("Engine operations", () => {
 
     it("rejects invalid dependency UUID", async () => {
       await expect(addTask(config, "Test", { depends: "not-a-uuid" })).rejects.toThrow("Invalid dependency UUID");
+    });
+
+    it("rejects invalid status in modifyTask", async () => {
+      await addTask(config, "Test", {});
+      await expect(modifyTask(config, "1", { status: "bogus" })).rejects.toThrow("Invalid status");
+    });
+
+    it("rejects invalid priority in modifyTask", async () => {
+      await addTask(config, "Test", {});
+      await expect(modifyTask(config, "1", { priority: "X" })).rejects.toThrow("Priority must be H, M, or L");
+    });
+
+    it("rejects invalid status in importTasks", async () => {
+      const json = JSON.stringify([{ description: "Bad", status: "bogus" }]);
+      await expect(importTasks(config, json)).rejects.toThrow("Invalid status");
+    });
+
+    it("rejects invalid priority in importTasks", async () => {
+      const json = JSON.stringify([{ description: "Bad", priority: "X" }]);
+      await expect(importTasks(config, json)).rejects.toThrow("Invalid priority");
     });
 
     it("accepts valid inputs", async () => {

@@ -465,7 +465,7 @@ describe("MCP Server integration", () => {
     const result = await call(client, "task_list", { filter: "+doc" });
     const tasks = parseContent(result) as Array<Record<string, unknown>>;
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].has_doc).toBe("yes");
+    expect(tasks[0].has_doc).toBe(true);
   });
 
   it("returns error when reading non-existent doc", async () => {
@@ -492,7 +492,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_add", { description: "Without doc" });
     await call(client, "task_doc_write", { id: "1", content: "Has doc" });
 
-    const result = await call(client, "task_list", { filter: "has_doc:yes" });
+    const result = await call(client, "task_list", { filter: "has_doc:true" });
     const tasks = parseContent(result) as Array<Record<string, unknown>>;
     expect(tasks).toHaveLength(1);
     expect(tasks[0].description).toBe("With doc");

@@ -8,6 +8,9 @@ import { compileFilter } from "./filter.js";
 import { resolveDate, formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
 
+export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring", "waiting"] as const;
+export const VALID_PRIORITIES = ["H", "M", "L"] as const;
+
 export interface EngineConfig {
   dataDir: string;
 }
@@ -75,7 +78,9 @@ async function drainSyncQueue(): Promise<void> {
   const s = getStore();
   for (const line of lines) {
     try {
-      const entry = JSON.parse(line) as Record<string, string>;
+      const parsed = JSON.parse(line);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
+      const entry = parsed as Record<string, string>;
       if (entry.subject) {
         // TaskCreated sync
         const uuid = randomUUID();
@@ -315,9 +320,19 @@ export async function modifyTask(
     if (attrs.scheduled !== undefined) updated.scheduled = attrs.scheduled ? formatDate(resolveDate(attrs.scheduled)) : undefined;
     if (attrs.recur !== undefined) updated.recur = attrs.recur || undefined;
     if (attrs.agent !== undefined) updated.agent = attrs.agent || undefined;
-    if (attrs.has_doc !== undefined) updated.has_doc = attrs.has_doc || undefined;
+    if (attrs.has_doc !== undefined) updated.has_doc = attrs.has_doc ? true : undefined;
     if (attrs.end !== undefined) updated.end = attrs.end || undefined;
-    if (attrs.status !== undefined) updated.status = attrs.status as Task["status"];
+    if (attrs.status !== undefined) {
+      if (!(VALID_STATUSES as readonly string[]).includes(attrs.status)) {
+        throw new Error(`Invalid status: '${attrs.status}'. Must be one of: ${VALID_STATUSES.join(", ")}`);
+      }
+      updated.status = attrs.status as Task["status"];
+    }
+    if (attrs.priority !== undefined && attrs.priority !== "") {
+      if (!(VALID_PRIORITIES as readonly string[]).includes(attrs.priority)) {
+        throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
+      }
+    }
 
     // Handle tag args
     for (const arg of extraArgs) {
@@ -481,17 +496,27 @@ export async function importTasks(_config: EngineConfig, tasksJson: string): Pro
     for (const raw of tasks) {
       const uuid = (raw.uuid as string) || randomUUID();
       const timestamp = now();
+      const rawStatus = (raw.status as string) || "pending";
+      if (!(VALID_STATUSES as readonly string[]).includes(rawStatus)) {
+        throw new Error(`Invalid status '${rawStatus}' in imported task. Must be one of: ${VALID_STATUSES.join(", ")}`);
+      }
       const task: Task = {
         uuid,
         id: nextId(),
         description: raw.description as string,
-        status: (raw.status as Task["status"]) || "pending",
+        status: rawStatus as Task["status"],
         entry: (raw.entry as string) || timestamp,
         modified: timestamp,
       };
       if (raw.project) task.project = raw.project as string;
       if (raw.tags) task.tags = raw.tags as string[];
-      if (raw.priority) task.priority = raw.priority as "H" | "M" | "L";
+      if (raw.priority) {
+        const rawPriority = raw.priority as string;
+        if (!(VALID_PRIORITIES as readonly string[]).includes(rawPriority)) {
+          throw new Error(`Invalid priority '${rawPriority}' in imported task. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
+        }
+        task.priority = rawPriority as "H" | "M" | "L";
+      }
       if (raw.due) task.due = raw.due as string;
       if (raw.agent) task.agent = raw.agent as string;
       s.set(uuid, task);
@@ -534,7 +559,7 @@ export async function writeDoc(_config: EngineConfig, id: string, content: strin
 
   await mkdir(docsDir(), { recursive: true });
   await writeFile(docPath(task.uuid), content, "utf-8");
-  await modifyTask(_config, task.uuid, { has_doc: "yes" }, ["+doc"]);
+  await modifyTask(_config, task.uuid, { has_doc: "true" }, ["+doc"]);
   return `Doc written for task ${task.uuid}.`;
 }
 

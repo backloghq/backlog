@@ -18,7 +18,7 @@ export interface Task {
   start?: string;
   annotations?: Annotation[];
   agent?: string;
-  has_doc?: string;
+  has_doc?: boolean;
   urgency?: number;
   // Recurrence tracking
   parent?: string;
