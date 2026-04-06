@@ -259,6 +259,8 @@ export async function modifyTask(
     if (attrs.recur !== undefined) updated.recur = attrs.recur || undefined;
     if (attrs.agent !== undefined) updated.agent = attrs.agent || undefined;
     if (attrs.has_doc !== undefined) updated.has_doc = attrs.has_doc || undefined;
+    if (attrs.end !== undefined) updated.end = attrs.end || undefined;
+    if (attrs.status !== undefined) updated.status = attrs.status as Task["status"];
 
     // Handle tag args
     for (const arg of extraArgs) {
@@ -497,6 +499,38 @@ export async function deleteDoc(_config: EngineConfig, id: string): Promise<stri
   try { await unlink(docPath(task.uuid)); } catch { /* ok */ }
   await modifyTask(_config, task.uuid, { has_doc: "" }, ["-doc"]);
   return `Doc deleted for task ${task.uuid}.`;
+}
+
+// --- Archive ---
+
+export async function archiveTasks(
+  _config: EngineConfig,
+  olderThanDays: number = 90,
+): Promise<string> {
+  const s = getStore();
+  const cutoff = Date.now() - olderThanDays * 86400000;
+  const count = await s.archive(
+    (task) =>
+      (task.status === "completed" || task.status === "deleted") &&
+      !!task.end &&
+      new Date(task.end).getTime() < cutoff,
+  );
+  if (count === 0) return "No tasks to archive.";
+  return `Archived ${count} task(s) older than ${olderThanDays} days.`;
+}
+
+export async function loadArchivedTasks(
+  _config: EngineConfig,
+  segment: string,
+): Promise<Task[]> {
+  const s = getStore();
+  const records = await s.loadArchive(segment);
+  return Array.from(records.values());
+}
+
+export function listArchiveSegments(): string[] {
+  const s = getStore();
+  return s.listArchiveSegments();
 }
 
 // --- Helpers ---

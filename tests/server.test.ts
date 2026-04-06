@@ -71,7 +71,10 @@ describe("MCP Server integration", () => {
     expect(names).toContain("task_doc_write");
     expect(names).toContain("task_doc_read");
     expect(names).toContain("task_doc_delete");
-    expect(names).toHaveLength(21);
+    expect(names).toContain("task_archive");
+    expect(names).toContain("task_archive_list");
+    expect(names).toContain("task_archive_load");
+    expect(names).toHaveLength(24);
   });
 
   it("defaults to pending tasks when filter is empty", async () => {

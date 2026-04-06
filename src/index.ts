@@ -17,6 +17,9 @@ import {
   writeDoc,
   readDoc,
   deleteDoc,
+  archiveTasks,
+  loadArchivedTasks,
+  listArchiveSegments,
   type EngineConfig,
 } from "./engine/index.js";
 
@@ -469,6 +472,49 @@ function createServer(config: EngineConfig): McpServer {
     async ({ id }) => {
       const result = await deleteDoc(config, id);
       return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_archive",
+    {
+      title: "Archive Old Tasks",
+      description: "Move completed/deleted tasks older than N days to an archive segment. Keeps the active set small.",
+      inputSchema: z.object({
+        older_than_days: z.number().optional().describe("Archive tasks completed/deleted more than this many days ago. Default: 90"),
+      }),
+    },
+    async ({ older_than_days }) => {
+      const result = await archiveTasks(config, older_than_days ?? 90);
+      return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_archive_list",
+    {
+      title: "List Archive Segments",
+      description: "List available archive segments containing old completed/deleted tasks.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const segments = listArchiveSegments();
+      return { content: [{ type: "text" as const, text: JSON.stringify(segments) }] };
+    }
+  );
+
+  server.registerTool(
+    "task_archive_load",
+    {
+      title: "Load Archived Tasks",
+      description: "Load tasks from an archive segment for inspection.",
+      inputSchema: z.object({
+        segment: z.string().describe("Archive segment name, e.g. '2026-Q1'"),
+      }),
+    },
+    async ({ segment }) => {
+      const tasks = await loadArchivedTasks(config, segment);
+      return { content: [{ type: "text" as const, text: JSON.stringify(tasks, null, 2) }] };
     }
   );
 

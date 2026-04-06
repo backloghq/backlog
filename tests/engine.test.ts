@@ -20,6 +20,9 @@ import {
   writeDoc,
   readDoc,
   deleteDoc,
+  archiveTasks,
+  loadArchivedTasks,
+  listArchiveSegments,
   type EngineConfig,
 } from "../src/engine/index.js";
 describe("Engine config", () => {
@@ -495,6 +498,44 @@ describe("Engine operations", () => {
       expect(tasks).toHaveLength(1);
       expect(tasks[0].description).toBe("Persistent");
       expect(tasks[0].project).toBe("test");
+    });
+  });
+
+  describe("archive", () => {
+    it("archives completed tasks older than threshold", async () => {
+      await addTask(config, "Old task", {});
+      await taskCommand(config, "1", "done");
+
+      // Backdate via modify — set end to 100 days ago
+      const tasks = await exportTasks(config, "status:completed");
+      const oldDate = new Date(Date.now() - 100 * 86400000).toISOString();
+      await modifyTask(config, tasks[0].uuid, { end: oldDate });
+
+      const result = await archiveTasks(config, 90);
+      expect(result).toContain("Archived 1");
+
+      const remaining = await exportTasks(config, "status:completed");
+      expect(remaining).toHaveLength(0);
+    });
+
+    it("returns message when nothing to archive", async () => {
+      const result = await archiveTasks(config, 90);
+      expect(result).toBe("No tasks to archive.");
+    });
+
+    it("lists and loads archive segments", async () => {
+      await addTask(config, "To archive", {});
+      await taskCommand(config, "1", "done");
+      const tasks = await exportTasks(config, "status:completed");
+      const oldDate = new Date(Date.now() - 100 * 86400000).toISOString();
+      await modifyTask(config, tasks[0].uuid, { end: oldDate });
+      await archiveTasks(config, 90);
+
+      const segments = listArchiveSegments();
+      expect(segments.length).toBeGreaterThan(0);
+
+      const archived = await loadArchivedTasks(config, segments[0]);
+      expect(archived.length).toBeGreaterThan(0);
     });
   });
 
