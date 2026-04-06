@@ -10,7 +10,7 @@
   "license": "MIT",
   "keywords": ["tasks", "planning", "backlog", "persistence", "agent-teams"],
   "skills": "./skills/",
-  "agents": "./agents/",
+  "agents": ["./agents/task-planner.md"],
   "hooks": "./hooks/hooks.json",
   "mcpServers": {
     "tasks": {
