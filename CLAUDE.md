@@ -242,3 +242,12 @@ npm run test:watch   # vitest (watch mode)
 - Errors from the engine should be surfaced as MCP tool errors (`isError: true`), not server crashes. All handlers are wrapped with `safe()`.
 - Use `console.error` for logging (stdout is the MCP JSON-RPC channel).
 - No unnecessary abstractions — this is a focused tool, keep it that way.
+
+## Release Process
+
+When making changes:
+1. Update `CHANGELOG.md` with a new version entry (Fixed/Added/Changed sections, [Keep a Changelog](https://keepachangelog.com) format)
+2. Bump version in **all three places**: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+3. Run `npm run build && npm run lint && npm test`
+4. Commit, push, create PR
+5. After merge: push to main, the marketplace picks up the new version automatically

@@ -89,11 +89,12 @@ function createServer(config: EngineConfig): McpServer {
         wait: z.string().optional().describe("Wait date — task hidden until this date"),
         scheduled: z.string().optional().describe("Scheduled date — when to start working on the task, e.g. 'monday', 'tomorrow'"),
         recur: z.string().optional().describe("Recurrence frequency, e.g. 'daily', 'weekly', '2wks', 'monthly'. Requires a due date."),
+        until: z.string().optional().describe("End date for recurrence — no instances generated past this date, e.g. '2026-12-31'"),
         agent: z.string().optional().describe("Agent identity, e.g. 'explorer', 'planner', 'reviewer'"),
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    safe(async ({ description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
+    safe(async ({ description, project, tags, priority, due, depends, wait, scheduled, recur, until, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (project) attrs.project = project;
       if (priority) attrs.priority = priority;
@@ -102,6 +103,7 @@ function createServer(config: EngineConfig): McpServer {
       if (wait) attrs.wait = wait;
       if (scheduled) attrs.scheduled = scheduled;
       if (recur) attrs.recur = recur;
+      if (until) attrs.until = until;
       if (agent) attrs.agent = agent;
 
       const extraArgs: string[] = [];
@@ -134,11 +136,12 @@ function createServer(config: EngineConfig): McpServer {
         wait: z.string().optional().describe("New wait date"),
         scheduled: z.string().optional().describe("New scheduled date"),
         recur: z.string().optional().describe("New recurrence frequency"),
+        until: z.string().optional().describe("End date for recurrence — no instances generated past this date, e.g. '2026-12-31'"),
         agent: z.string().optional().describe("Agent identity, e.g. 'explorer', 'planner', 'reviewer'"),
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    safe(async ({ filter, description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
+    safe(async ({ filter, description, project, tags, priority, due, depends, wait, scheduled, recur, until, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (description) attrs.description = description;
       if (project !== undefined) attrs.project = project;
@@ -148,6 +151,7 @@ function createServer(config: EngineConfig): McpServer {
       if (wait !== undefined) attrs.wait = wait;
       if (scheduled !== undefined) attrs.scheduled = scheduled;
       if (recur !== undefined) attrs.recur = recur;
+      if (until !== undefined) attrs.until = until;
       if (agent !== undefined) attrs.agent = agent;
 
       const extraArgs: string[] = [];

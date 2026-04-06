@@ -155,6 +155,14 @@ function validateAttrs(attrs) {
             throw new Error(`Invalid wait date: '${attrs.wait}'`);
         }
     }
+    if (attrs.until !== undefined && attrs.until !== "") {
+        try {
+            resolveDate(attrs.until);
+        }
+        catch {
+            throw new Error(`Invalid until date: "${attrs.until}".`);
+        }
+    }
     if (attrs.depends) {
         for (const dep of attrs.depends.split(",").map((d) => d.trim())) {
             if (!UUID_RE.test(dep))
@@ -306,6 +314,7 @@ export async function addTask(_config, description, attrs, extraArgs = []) {
         ...(attrs.wait && { wait: formatDate(resolveDate(attrs.wait)) }),
         ...(attrs.scheduled && { scheduled: formatDate(resolveDate(attrs.scheduled)) }),
         ...(attrs.recur && { recur: attrs.recur }),
+        ...(attrs.until && { until: formatDate(resolveDate(attrs.until)) }),
         ...(attrs.depends && { depends: attrs.depends.split(",").map((d) => d.trim()) }),
         ...(attrs.agent && { agent: attrs.agent }),
     };
@@ -340,10 +349,12 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
             updated.scheduled = attrs.scheduled ? formatDate(resolveDate(attrs.scheduled)) : undefined;
         if (attrs.recur !== undefined)
             updated.recur = attrs.recur || undefined;
+        if (attrs.until !== undefined)
+            updated.until = attrs.until ? formatDate(resolveDate(attrs.until)) : undefined;
         if (attrs.agent !== undefined)
             updated.agent = attrs.agent || undefined;
         if (attrs.has_doc !== undefined)
-            updated.has_doc = attrs.has_doc ? true : undefined;
+            updated.has_doc = attrs.has_doc === true ? true : undefined;
         if (attrs.end !== undefined)
             updated.end = attrs.end || undefined;
         if (attrs.status !== undefined) {
@@ -566,7 +577,7 @@ export async function writeDoc(_config, id, content) {
         throw new Error(`No task found matching '${id}'`);
     await mkdir(docsDir(), { recursive: true });
     await writeFile(docPath(task.uuid), content, "utf-8");
-    await modifyTask(_config, task.uuid, { has_doc: "true" }, ["+doc"]);
+    await modifyTask(_config, task.uuid, { has_doc: true }, ["+doc"]);
     return `Doc written for task ${task.uuid}.`;
 }
 export async function readDoc(_config, id) {
@@ -588,7 +599,7 @@ export async function deleteDoc(_config, id) {
         await unlink(docPath(task.uuid));
     }
     catch { /* ok */ }
-    await modifyTask(_config, task.uuid, { has_doc: "" }, ["-doc"]);
+    await modifyTask(_config, task.uuid, { has_doc: false }, ["-doc"]);
     return `Doc deleted for task ${task.uuid}.`;
 }
 // --- Archive ---

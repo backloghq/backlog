@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0 (2026-04-07)
+
+### Fixed
+- **has_doc type coercion** — `writeDoc`/`deleteDoc` now pass boolean `true`/`false` instead of string `"true"`/`""`. `modifyTask` uses strict boolean check.
+
+### Added
+- **`until` field in API** — exposed in `task_add` and `task_modify` Zod schemas. Sets recurrence end date — no instances generated past this date. Validated via `resolveDate()` in `validateAttrs()`.
+- **5 new tests** — `until` add/modify/validation/recurrence, `has_doc` boolean check
+
+### Removed
+- **`mask` field** — removed unused field from Task type
+- Clarified `waiting` status as virtual (derived from `wait` date, not explicitly set)
+
+### Changed
+- CLAUDE.md: added release process documentation
+
 ## 1.1.0 (2026-04-07)
 
 ### Fixed
