@@ -39,6 +39,8 @@ Add to your project's `.claude/settings.json`:
 | `/backlog:tasks` | Show the current backlog — pending, active, blocked, overdue tasks |
 | `/backlog:plan` | Break down a goal into tasks with dependencies, priorities, and specs |
 | `/backlog:standup` | Daily standup — done, in progress, blocked, up next |
+| `/backlog:spec` | Write a spec document for a task before implementation |
+| `/backlog:implement` | Pick up a task, read its spec, implement it, mark done |
 | `/backlog:handoff` | Prepare for next session — annotate progress, stop active tasks, summarize state |
 
 ## Agent
@@ -52,10 +54,11 @@ The `task-planner` agent can be auto-invoked by Claude when someone needs to pla
 | `SessionStart` | Shows pending task count when a session begins |
 | `TaskCreated` | Syncs Claude's built-in tasks to the persistent backlog |
 | `TaskCompleted` | Marks the matching backlog task as done when Claude completes a built-in task |
+| `SubagentStart` | Auto-assigns unassigned pending tasks to the spawned agent |
 
 ## Tools (MCP)
 
-21 tools for full task lifecycle management:
+24 tools for full task lifecycle management:
 
 | Tool | Description |
 |------|-------------|
@@ -78,6 +81,9 @@ The `task-planner` agent can be auto-invoked by Claude when someone needs to pla
 | `task_doc_write` | Attach/update a markdown document to a task |
 | `task_doc_read` | Read the document attached to a task |
 | `task_doc_delete` | Remove a document from a task |
+| `task_archive` | Archive completed/deleted tasks older than N days |
+| `task_archive_list` | List available archive segments |
+| `task_archive_load` | Load archived tasks for inspection |
 | `task_projects` | List all project names |
 | `task_tags` | List all tags |
 
