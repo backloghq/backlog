@@ -19,6 +19,19 @@ import {
   type TaskWarriorConfig,
 } from "./taskwarrior.js";
 
+function parseTags(tags: string | undefined): string[] {
+  if (!tags) return [];
+  const trimmed = tags.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      return JSON.parse(trimmed) as string[];
+    } catch {
+      return [];
+    }
+  }
+  return trimmed.split(",").map((t) => t.trim()).filter(Boolean);
+}
+
 function createServer(config: TaskWarriorConfig): McpServer {
   const server = new McpServer({
     name: "taskwarrior-mcp",
@@ -52,7 +65,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
       inputSchema: z.object({
         description: z.string().describe("Task description text"),
         project: z.string().optional().describe("Project name, e.g. 'backend'"),
-        tags: z.array(z.string()).optional().describe("Tags to apply, e.g. ['bug', 'urgent']"),
+        tags: z.string().optional().describe("Tags to apply, as comma-separated list or JSON array. E.g. 'bug,urgent' or '[\"bug\",\"urgent\"]'"),
         priority: z.enum(["H", "M", "L"]).optional().describe("Priority: H (high), M (medium), L (low)"),
         due: z.string().optional().describe("Due date, e.g. 'tomorrow', '2025-12-31', 'eow'"),
         depends: z.string().optional().describe("UUID(s) of tasks this depends on, comma-separated"),
@@ -75,8 +88,9 @@ function createServer(config: TaskWarriorConfig): McpServer {
       if (agent) attrs.agent = agent;
 
       const extraArgs: string[] = [];
-      if (tags && tags.length > 0) {
-        extraArgs.push(...tags.map((t) => `+${t}`));
+      const parsed = parseTags(tags);
+      if (parsed.length > 0) {
+        extraArgs.push(...parsed.map((t) => `+${t}`));
       }
       if (extra) {
         extraArgs.push(...extra.split(/\s+/).filter(Boolean));
@@ -96,7 +110,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
         filter: z.string().describe("Filter to select tasks to modify (ID, UUID, or filter expression)"),
         description: z.string().optional().describe("New description text"),
         project: z.string().optional().describe("New project name"),
-        tags: z.array(z.string()).optional().describe("Tags to add (prefixed with +) or remove (prefixed with -)"),
+        tags: z.string().optional().describe("Tags to add (+) or remove (-), as comma-separated list. E.g. 'frontend,urgent' or '-old,+new'"),
         priority: z.enum(["H", "M", "L", ""]).optional().describe("New priority (empty string to clear)"),
         due: z.string().optional().describe("New due date"),
         depends: z.string().optional().describe("New dependency UUIDs"),
@@ -120,8 +134,9 @@ function createServer(config: TaskWarriorConfig): McpServer {
       if (agent !== undefined) attrs.agent = agent;
 
       const extraArgs: string[] = [];
-      if (tags && tags.length > 0) {
-        extraArgs.push(...tags.map((t) => (t.startsWith("+") || t.startsWith("-") ? t : `+${t}`)));
+      const parsed = parseTags(tags);
+      if (parsed.length > 0) {
+        extraArgs.push(...parsed.map((t) => (t.startsWith("+") || t.startsWith("-") ? t : `+${t}`)));
       }
       if (extra) {
         extraArgs.push(...extra.split(/\s+/).filter(Boolean));
@@ -338,7 +353,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
       inputSchema: z.object({
         description: z.string().describe("Task description text"),
         project: z.string().optional().describe("Project name"),
-        tags: z.array(z.string()).optional().describe("Tags to apply"),
+        tags: z.string().optional().describe("Tags to apply, as comma-separated list. E.g. 'done,reviewed'"),
         priority: z.enum(["H", "M", "L"]).optional().describe("Priority: H/M/L"),
         agent: z.string().optional().describe("Agent identity"),
         extra: z.string().optional().describe("Additional raw TaskWarrior attributes"),
@@ -351,8 +366,9 @@ function createServer(config: TaskWarriorConfig): McpServer {
       if (agent) attrs.agent = agent;
 
       const extraArgs: string[] = [];
-      if (tags && tags.length > 0) {
-        extraArgs.push(...tags.map((t) => `+${t}`));
+      const parsed = parseTags(tags);
+      if (parsed.length > 0) {
+        extraArgs.push(...parsed.map((t) => `+${t}`));
       }
       if (extra) {
         extraArgs.push(...extra.split(/\s+/).filter(Boolean));
@@ -372,7 +388,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
         id: z.string().describe("Task ID number or UUID to duplicate"),
         description: z.string().optional().describe("New description (overrides original)"),
         project: z.string().optional().describe("New project"),
-        tags: z.array(z.string()).optional().describe("Tags to add or remove"),
+        tags: z.string().optional().describe("Tags to add or remove, as comma-separated list. E.g. 'frontend,urgent' or '-old,+new'"),
         priority: z.enum(["H", "M", "L", ""]).optional().describe("New priority"),
         due: z.string().optional().describe("New due date"),
         agent: z.string().optional().describe("Agent identity"),
@@ -388,8 +404,9 @@ function createServer(config: TaskWarriorConfig): McpServer {
       if (agent !== undefined) attrs.agent = agent;
 
       const extraArgs: string[] = [];
-      if (tags && tags.length > 0) {
-        extraArgs.push(...tags.map((t) => (t.startsWith("+") || t.startsWith("-") ? t : `+${t}`)));
+      const parsed = parseTags(tags);
+      if (parsed.length > 0) {
+        extraArgs.push(...parsed.map((t) => (t.startsWith("+") || t.startsWith("-") ? t : `+${t}`)));
       }
       if (extra) {
         extraArgs.push(...extra.split(/\s+/).filter(Boolean));

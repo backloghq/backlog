@@ -105,7 +105,7 @@ describe("MCP Server integration", () => {
   it("adds a task with tags", async () => {
     await call(client, "task_add", {
       description: "Tagged task",
-      tags: ["bug", "urgent"],
+      tags: "bug,urgent",
     });
 
     const result = await call(client, "task_list", { filter: "+bug" });
@@ -113,6 +113,19 @@ describe("MCP Server integration", () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].tags).toContain("bug");
     expect(tasks[0].tags).toContain("urgent");
+  });
+
+  it("adds a task with tags as JSON array string", async () => {
+    await call(client, "task_add", {
+      description: "JSON tags",
+      tags: '["alpha", "beta"]',
+    });
+
+    const result = await call(client, "task_list", { filter: "+alpha" });
+    const tasks = parseContent(result) as Array<Record<string, unknown>>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].tags).toContain("alpha");
+    expect(tasks[0].tags).toContain("beta");
   });
 
   it("modifies a task", async () => {
@@ -133,7 +146,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_add", { description: "Tag me" });
     await call(client, "task_modify", {
       filter: "1",
-      tags: ["frontend", "urgent"],
+      tags: "frontend,urgent",
     });
 
     const result = await call(client, "task_list", { filter: "+frontend" });
@@ -264,8 +277,8 @@ describe("MCP Server integration", () => {
   });
 
   it("lists tags", async () => {
-    await call(client, "task_add", { description: "A", tags: ["frontend"] });
-    await call(client, "task_add", { description: "B", tags: ["backend"] });
+    await call(client, "task_add", { description: "A", tags: "frontend" });
+    await call(client, "task_add", { description: "B", tags: "backend" });
 
     const result = await call(client, "task_tags");
     const tags = parseContent(result) as string[];
@@ -376,7 +389,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_log", {
       description: "Already finished work",
       project: "done-stuff",
-      tags: ["retroactive"],
+      tags: "retroactive",
     });
 
     const pending = await call(client, "task_list", { filter: "status:pending" });
