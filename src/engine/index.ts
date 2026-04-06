@@ -248,7 +248,8 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   // Strip internal fields before returning
   updatedTasks.forEach((t) => { delete t._blocking; });
 
-  const predicate = compileFilter(filter);
+  const tasksByUuid = new Map(updatedTasks.map((t) => [t.uuid, t]));
+  const predicate = compileFilter(filter, (uuid) => tasksByUuid.get(uuid));
   return updatedTasks.filter(predicate);
 }
 
@@ -302,7 +303,8 @@ export async function modifyTask(
   validateAttrs(attrs);
   const s = getStore();
   const allTasks = s.all();
-  const predicate = compileFilter(filter);
+  const tasksByUuid = new Map(allTasks.map((t) => [t.uuid, t]));
+  const predicate = compileFilter(filter, (uuid) => tasksByUuid.get(uuid));
   const matches = allTasks.filter(predicate);
 
   if (matches.length === 0) return "No matching tasks.";

@@ -487,6 +487,53 @@ describe("Engine operations", () => {
       expect(tasks[0].description).toBe("Blocked");
     });
 
+    it("+BLOCKED is false when all deps are completed", async () => {
+      await addTask(config, "Dep", {});
+      const depTasks = await exportTasks(config, "");
+      const depUuid = depTasks[0].uuid;
+      await addTask(config, "Dependent", { depends: depUuid });
+
+      // Complete the dependency
+      await taskCommand(config, "1", "done");
+
+      const blocked = await exportTasks(config, "+BLOCKED");
+      expect(blocked).toHaveLength(0);
+
+      // The dependent task should now be unblocked
+      const unblocked = await exportTasks(config, "+UNBLOCKED status:pending");
+      expect(unblocked.find((t) => t.description === "Dependent")).toBeDefined();
+    });
+
+    it("+BLOCKED is true when one dep is still pending", async () => {
+      await addTask(config, "Dep A", {});
+      await addTask(config, "Dep B", {});
+      const depTasks = await exportTasks(config, "status:pending");
+      const depAUuid = depTasks.find((t) => t.description === "Dep A")!.uuid;
+      const depBUuid = depTasks.find((t) => t.description === "Dep B")!.uuid;
+      await addTask(config, "Dependent", { depends: `${depAUuid},${depBUuid}` });
+
+      // Complete only one dep
+      await taskCommand(config, String(depTasks.find((t) => t.description === "Dep A")!.id), "done");
+
+      const blocked = await exportTasks(config, "+BLOCKED");
+      expect(blocked.find((t) => t.description === "Dependent")).toBeDefined();
+    });
+
+    it("+READY returns tasks with all deps resolved", async () => {
+      await addTask(config, "Dep", {});
+      const depTasks = await exportTasks(config, "");
+      const depUuid = depTasks[0].uuid;
+      await addTask(config, "Dependent", { depends: depUuid });
+      await addTask(config, "Independent", {});
+
+      // Complete the dep
+      await taskCommand(config, "1", "done");
+
+      const ready = await exportTasks(config, "+READY");
+      expect(ready.find((t) => t.description === "Dependent")).toBeDefined();
+      expect(ready.find((t) => t.description === "Independent")).toBeDefined();
+    });
+
     it("+ANNOTATED filters annotated tasks", async () => {
       await addTask(config, "Has note", {});
       await addTask(config, "No note", {});
