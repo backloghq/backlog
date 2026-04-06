@@ -36,6 +36,19 @@ function parseTags(tags: string | undefined): string[] {
   return trimmed.split(",").map((t) => t.trim()).filter(Boolean);
 }
 
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+
+function safe<T>(fn: (args: T) => Promise<ToolResult>): (args: T) => Promise<ToolResult> {
+  return async (args: T) => {
+    try {
+      return await fn(args);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text" as const, text: message }], isError: true };
+    }
+  };
+}
+
 function createServer(config: EngineConfig): McpServer {
   const server = new McpServer({
     name: "backlog",
@@ -54,11 +67,11 @@ function createServer(config: EngineConfig): McpServer {
         filter: z.string().describe("Filter expression. Leave empty for all pending tasks."),
       }),
     },
-    async ({ filter }) => {
+    safe(async ({ filter }) => {
       const effectiveFilter = filter || "status:pending";
       const tasks = await exportTasks(config, effectiveFilter);
       return { content: [{ type: "text" as const, text: JSON.stringify(tasks, null, 2) }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -80,7 +93,7 @@ function createServer(config: EngineConfig): McpServer {
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    async ({ description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
+    safe(async ({ description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (project) attrs.project = project;
       if (priority) attrs.priority = priority;
@@ -102,7 +115,7 @@ function createServer(config: EngineConfig): McpServer {
 
       const result = await addTask(config, description, attrs, extraArgs);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -125,7 +138,7 @@ function createServer(config: EngineConfig): McpServer {
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    async ({ filter, description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
+    safe(async ({ filter, description, project, tags, priority, due, depends, wait, scheduled, recur, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (description) attrs.description = description;
       if (project !== undefined) attrs.project = project;
@@ -148,7 +161,7 @@ function createServer(config: EngineConfig): McpServer {
 
       const result = await modifyTask(config, filter, attrs, extraArgs);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -160,10 +173,10 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const result = await taskCommand(config, id, "done");
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -175,10 +188,10 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const result = await taskCommand(config, id, "delete");
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -191,10 +204,10 @@ function createServer(config: EngineConfig): McpServer {
         text: z.string().describe("Annotation text"),
       }),
     },
-    async ({ id, text }) => {
+    safe(async ({ id, text }) => {
       const result = await taskCommand(config, id, "annotate", [text]);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -206,10 +219,10 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const result = await taskCommand(config, id, "start");
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -221,10 +234,10 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const result = await taskCommand(config, id, "stop");
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -234,10 +247,10 @@ function createServer(config: EngineConfig): McpServer {
       description: "Undo the last modification.",
       inputSchema: z.object({}),
     },
-    async () => {
+    safe(async () => {
       const result = await undo();
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -249,7 +262,7 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const tasks = await exportTasks(config, id);
       if (tasks.length === 0) {
         return {
@@ -258,7 +271,7 @@ function createServer(config: EngineConfig): McpServer {
         };
       }
       return { content: [{ type: "text" as const, text: JSON.stringify(tasks[0], null, 2) }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -268,10 +281,10 @@ function createServer(config: EngineConfig): McpServer {
       description: "List all project names in use.",
       inputSchema: z.object({}),
     },
-    async () => {
+    safe(async () => {
       const projects = await getUnique(config, "project");
       return { content: [{ type: "text" as const, text: JSON.stringify(projects) }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -281,10 +294,10 @@ function createServer(config: EngineConfig): McpServer {
       description: "List all tags in use.",
       inputSchema: z.object({}),
     },
-    async () => {
+    safe(async () => {
       const tags = await getUnique(config, "tags");
       return { content: [{ type: "text" as const, text: JSON.stringify(tags) }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -297,10 +310,10 @@ function createServer(config: EngineConfig): McpServer {
         text: z.string().describe("Exact annotation text to remove"),
       }),
     },
-    async ({ id, text }) => {
+    safe(async ({ id, text }) => {
       const result = await taskCommand(config, id, "denotate", [text]);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -312,10 +325,10 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID of a deleted task"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const result = await taskCommand(config, id, "purge");
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -327,10 +340,10 @@ function createServer(config: EngineConfig): McpServer {
         tasks: z.string().describe("JSON array of task objects, e.g. '[{\"description\":\"My task\",\"project\":\"foo\"}]'"),
       }),
     },
-    async ({ tasks }) => {
+    safe(async ({ tasks }) => {
       const result = await importTasks(config, tasks);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -342,11 +355,11 @@ function createServer(config: EngineConfig): McpServer {
         filter: z.string().describe("Filter expression. Leave empty for all pending tasks."),
       }),
     },
-    async ({ filter }) => {
+    safe(async ({ filter }) => {
       const effectiveFilter = filter || "status:pending";
       const count = await countTasks(config, effectiveFilter);
       return { content: [{ type: "text" as const, text: String(count) }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -363,7 +376,7 @@ function createServer(config: EngineConfig): McpServer {
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    async ({ description, project, tags, priority, agent, extra }) => {
+    safe(async ({ description, project, tags, priority, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (project) attrs.project = project;
       if (priority) attrs.priority = priority;
@@ -380,7 +393,7 @@ function createServer(config: EngineConfig): McpServer {
 
       const result = await logTask(config, description, attrs, extraArgs);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -399,7 +412,7 @@ function createServer(config: EngineConfig): McpServer {
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    async ({ id, description, project, tags, priority, due, agent, extra }) => {
+    safe(async ({ id, description, project, tags, priority, due, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (description) attrs.description = description;
       if (project !== undefined) attrs.project = project;
@@ -418,7 +431,7 @@ function createServer(config: EngineConfig): McpServer {
 
       const result = await duplicateTask(config, id, attrs, extraArgs);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -433,10 +446,10 @@ function createServer(config: EngineConfig): McpServer {
         content: z.string().describe("Document content (markdown)"),
       }),
     },
-    async ({ id, content }) => {
+    safe(async ({ id, content }) => {
       const result = await writeDoc(config, id, content);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -448,7 +461,7 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const doc = await readDoc(config, id);
       if (doc === null) {
         return {
@@ -457,7 +470,7 @@ function createServer(config: EngineConfig): McpServer {
         };
       }
       return { content: [{ type: "text" as const, text: doc }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -469,10 +482,10 @@ function createServer(config: EngineConfig): McpServer {
         id: z.string().describe("Task ID number or UUID"),
       }),
     },
-    async ({ id }) => {
+    safe(async ({ id }) => {
       const result = await deleteDoc(config, id);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -484,11 +497,11 @@ function createServer(config: EngineConfig): McpServer {
         older_than_days: z.string().optional().describe("Number of days. Archive tasks completed/deleted more than this many days ago. Default: 90"),
       }),
     },
-    async ({ older_than_days }) => {
+    safe(async ({ older_than_days }) => {
       const days = older_than_days ? parseInt(older_than_days, 10) : 90;
       const result = await archiveTasks(config, days);
       return { content: [{ type: "text" as const, text: result }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -498,10 +511,10 @@ function createServer(config: EngineConfig): McpServer {
       description: "List available archive segments containing old completed/deleted tasks.",
       inputSchema: z.object({}),
     },
-    async () => {
+    safe(async () => {
       const segments = listArchiveSegments();
       return { content: [{ type: "text" as const, text: JSON.stringify(segments) }] };
-    }
+    })
   );
 
   server.registerTool(
@@ -513,10 +526,10 @@ function createServer(config: EngineConfig): McpServer {
         segment: z.string().describe("Archive segment name, e.g. '2026-Q1'"),
       }),
     },
-    async ({ segment }) => {
+    safe(async ({ segment }) => {
       const tasks = await loadArchivedTasks(config, segment);
       return { content: [{ type: "text" as const, text: JSON.stringify(tasks, null, 2) }] };
-    }
+    })
   );
 
   return server;

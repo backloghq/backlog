@@ -240,6 +240,9 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   const updatedTasks = s.all();
   updatedTasks.forEach((t) => { t.urgency = computeUrgency(t, updatedTasks); });
 
+  // Strip internal fields before returning
+  updatedTasks.forEach((t) => { delete t._blocking; });
+
   const predicate = compileFilter(filter);
   return updatedTasks.filter(predicate);
 }
