@@ -2,24 +2,9 @@
 
 Persistent, cross-session task management for Claude Code. Tasks survive sessions so work started by one agent can be picked up by another.
 
+Zero external dependencies — pure TypeScript with event-sourced storage. Install and it works.
+
 ## Install as Claude Code Plugin
-
-### Prerequisites
-
-[TaskWarrior](https://taskwarrior.org/) 3.x must be installed:
-
-```bash
-# macOS
-brew install task
-
-# Debian/Ubuntu
-sudo apt install taskwarrior
-
-# Arch
-sudo pacman -S task
-```
-
-### Plugin install
 
 ```bash
 # From the marketplace (once published)
@@ -31,16 +16,16 @@ claude --plugin-dir /path/to/agent-teams-task-mcp
 
 ### Standalone MCP server
 
-If you prefer to use the MCP server without the plugin, add to your project's `.claude/settings.json`:
+Add to your project's `.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
-    "taskwarrior": {
+    "backlog": {
       "command": "node",
-      "args": ["/absolute/path/to/agent-teams-task-mcp/dist/index.js"],
+      "args": ["/path/to/agent-teams-task-mcp/dist/index.js"],
       "env": {
-        "TASKDATA": "/home/you/.local/share/taskwarrior-mcp/my-project"
+        "TASKDATA": "/path/to/task-data"
       }
     }
   }
@@ -57,11 +42,11 @@ If you prefer to use the MCP server without the plugin, add to your project's `.
 
 ## Tools (MCP)
 
-21 tools exposed via the TaskWarrior MCP server:
+21 tools for full task lifecycle management:
 
 | Tool | Description |
 |------|-------------|
-| `task_list` | Query tasks with [filter syntax](https://taskwarrior.org/docs/filter/) |
+| `task_list` | Query tasks with filter syntax |
 | `task_count` | Count tasks matching a filter |
 | `task_add` | Create a task with description, project, tags, priority, due, scheduled, recur, agent |
 | `task_log` | Record an already-completed task |
@@ -83,9 +68,7 @@ If you prefer to use the MCP server without the plugin, add to your project's `.
 | `task_projects` | List all project names |
 | `task_tags` | List all tags |
 
-## Filter Examples
-
-TaskWarrior's filter syntax is passed through directly:
+## Filter Syntax
 
 ```
 status:pending                    # all pending tasks
@@ -96,7 +79,11 @@ priority:H due.before:friday      # high priority due before friday
 +BLOCKED                          # tasks blocked by dependencies
 +READY                            # actionable tasks (past scheduled date)
 agent:explorer                    # tasks assigned to the explorer agent
+( project:web or project:api )    # boolean with parentheses
+description.contains:auth         # substring match
 ```
+
+Supports attribute modifiers (`.before`, `.after`, `.by`, `.has`, `.not`, `.none`, `.any`, `.startswith`, `.endswith`), tags (`+tag`, `-tag`), virtual tags (`+OVERDUE`, `+ACTIVE`, `+BLOCKED`, `+READY`, `+TAGGED`, `+ANNOTATED`, etc.), and boolean operators (`and`, `or`).
 
 ## Task Docs
 
@@ -108,11 +95,11 @@ task_doc_read   id:"1"
 task_doc_delete id:"1"
 ```
 
-Writing a doc automatically adds a `+doc` tag and `has_doc:yes`, so agents can discover tasks with docs:
+Writing a doc adds a `+doc` tag and `has_doc:yes`, so agents can discover tasks with docs:
 
 ```
-task_list filter:"+doc"              # tasks with attached docs
-task_list filter:"has_doc:yes"       # same, via UDA
+task_list filter:"+doc"
+task_list filter:"has_doc:yes"
 ```
 
 ## Agent Identity
@@ -126,16 +113,12 @@ task_list filter:"agent:explorer status:pending"
 
 ## Project Isolation
 
-Each project gets its own task data automatically. When used as a plugin, task data lives in `~/.claude/plugins/data/backlog/projects/<project-slug>/`. When used standalone, set `TASKDATA` explicitly per project.
+Each project gets its own task data automatically. When used as a plugin, task data lives in `~/.claude/plugins/data/backlog/projects/<project-slug>/`. When used standalone, set `TASKDATA` explicitly.
 
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `TASKDATA` | No | Explicit path to task data directory (overrides auto-derivation) |
-| `TASKDATA_ROOT` | No | Root directory for auto-derived per-project task data |
-| `TASKRC` | No | Path to `.taskrc` (defaults to `TASKDATA/.taskrc`) |
-| `TASK_BIN` | No | Path to `task` binary (defaults to `task`) |
+| Variable | Description |
+|----------|-------------|
+| `TASKDATA` | Explicit path to task data directory (overrides auto-derivation) |
+| `TASKDATA_ROOT` | Root directory for auto-derived per-project task data |
 
 ## Development
 
