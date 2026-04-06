@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
-import { Store } from "opslog";
+import { Store } from "@backloghq/opslog";
 import type { Task } from "./types.js";
 import { compileFilter } from "./filter.js";
 import { resolveDate, formatDate } from "./dates.js";

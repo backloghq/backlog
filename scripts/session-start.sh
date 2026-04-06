@@ -16,7 +16,7 @@ MANIFEST="${TASKDATA}/manifest.json"
 [ -f "$MANIFEST" ] || exit 0
 
 NODE_PATH="${PLUGIN_DATA}/node_modules" node --input-type=module -e "
-import { Store } from 'opslog';
+import { Store } from '@backloghq/opslog';
 const store = new Store();
 try {
   await store.open('${TASKDATA}');
