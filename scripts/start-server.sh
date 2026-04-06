@@ -11,6 +11,7 @@ if ! command -v npm &>/dev/null; then
 fi
 
 # Ensure node dependencies are installed
+mkdir -p "${PLUGIN_DATA}"
 if ! diff -q "${PLUGIN_ROOT}/package.json" "${PLUGIN_DATA}/package.json" &>/dev/null 2>&1; then
   cd "${PLUGIN_DATA}"
   cp "${PLUGIN_ROOT}/package.json" "${PLUGIN_ROOT}/package-lock.json" .
