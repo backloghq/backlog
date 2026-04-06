@@ -481,11 +481,12 @@ function createServer(config: EngineConfig): McpServer {
       title: "Archive Old Tasks",
       description: "Move completed/deleted tasks older than N days to an archive segment. Keeps the active set small.",
       inputSchema: z.object({
-        older_than_days: z.number().optional().describe("Archive tasks completed/deleted more than this many days ago. Default: 90"),
+        older_than_days: z.string().optional().describe("Number of days. Archive tasks completed/deleted more than this many days ago. Default: 90"),
       }),
     },
     async ({ older_than_days }) => {
-      const result = await archiveTasks(config, older_than_days ?? 90);
+      const days = older_than_days ? parseInt(older_than_days, 10) : 90;
+      const result = await archiveTasks(config, days);
       return { content: [{ type: "text" as const, text: result }] };
     }
   );
