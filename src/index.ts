@@ -32,7 +32,8 @@ function createServer(config: TaskWarriorConfig): McpServer {
       }),
     },
     async ({ filter }) => {
-      const tasks = await exportTasks(config, filter);
+      const effectiveFilter = filter || "status:pending";
+      const tasks = await exportTasks(config, effectiveFilter);
       return { content: [{ type: "text" as const, text: JSON.stringify(tasks, null, 2) }] };
     }
   );

@@ -70,6 +70,17 @@ describe("MCP Server integration", () => {
     expect(names).toHaveLength(15);
   });
 
+  it("defaults to pending tasks when filter is empty", async () => {
+    await call(client, "task_add", { description: "Pending task" });
+    await call(client, "task_add", { description: "Done task" });
+    await call(client, "task_done", { id: "2" });
+
+    const result = await call(client, "task_list", { filter: "" });
+    const tasks = parseContent(result) as Array<Record<string, unknown>>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].description).toBe("Pending task");
+  });
+
   it("adds and lists a task", async () => {
     await call(client, "task_add", {
       description: "Test task from MCP",
