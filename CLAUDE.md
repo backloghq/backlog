@@ -52,11 +52,26 @@ src/
     index.ts            # Engine: opslog-backed store, all task operations
     filter.ts           # Filter compiler: parses filter expressions into predicates
     dates.ts            # Date resolution: natural language dates → ISO timestamps
+    recurrence.ts       # Recurring task template expansion
     types.ts            # Task type definition
 skills/
   tasks/SKILL.md        # /tasks skill: show backlog overview
-  handoff/SKILL.md      # /handoff skill: session handoff
   plan/SKILL.md         # /plan skill: break down goals into tasks
+  standup/SKILL.md      # /standup skill: daily standup summary
+  refine/SKILL.md       # /refine skill: backlog grooming
+  spec/SKILL.md         # /spec skill: write task specifications
+  implement/SKILL.md    # /implement skill: pick up and implement a task
+  handoff/SKILL.md      # /handoff skill: session handoff
+agents/
+  task-planner.md       # Auto-invokable agent for task decomposition
+hooks/
+  hooks.json            # SessionStart, TaskCreated, TaskCompleted, SubagentStart
+scripts/
+  start-server.sh       # MCP server launcher (installs deps, starts node)
+  session-start.sh      # SessionStart hook: show pending task count
+  sync-task-created.sh  # TaskCreated hook: queue task for sync
+  sync-task-completed.sh # TaskCompleted hook: queue completion for sync
+  sync-subagent-start.sh # SubagentStart hook: queue agent assignment
 tests/
   engine.test.ts        # Engine unit tests
   server.test.ts        # MCP server integration tests
@@ -79,14 +94,17 @@ tests/
 | `task_info` | Get full JSON detail for a single task by ID or UUID |
 | `task_import` | Bulk import tasks from JSON array |
 | `task_purge` | Permanently remove deleted tasks |
-| `task_projects` | List all project names |
-| `task_tags` | List all tags |
 | `task_count` | Count tasks matching a filter |
 | `task_log` | Record an already-completed task |
 | `task_duplicate` | Copy a task with optional modifications |
 | `task_doc_write` | Attach a markdown document to a task |
 | `task_doc_read` | Read a task's attached document |
 | `task_doc_delete` | Remove a task's attached document |
+| `task_archive` | Move old completed/deleted tasks to archive segments |
+| `task_archive_list` | List available archive segments |
+| `task_archive_load` | Load archived tasks for inspection |
+| `task_projects` | List all project names |
+| `task_tags` | List all tags |
 
 ### Input Design Principles
 
@@ -100,6 +118,33 @@ tests/
 
 All tools return `content: [{ type: "text", text: ... }]`. For read operations, return the raw JSON. For write operations, return a confirmation message including the task UUID.
 
+## Skills
+
+| Skill | Purpose |
+|-------|---------|
+| `/backlog:tasks` | Show backlog overview: pending, active, blocked, overdue |
+| `/backlog:plan` | Break down a goal into tasks with dependencies and specs |
+| `/backlog:standup` | Daily standup: done, in progress, blocked, up next |
+| `/backlog:refine` | Groom the backlog: fix vague tasks, missing priorities, broken deps |
+| `/backlog:spec` | Write a spec document for a task before implementation |
+| `/backlog:implement` | Pick up a task, read its spec, implement it, mark done |
+| `/backlog:handoff` | Session handoff: annotate progress, stop active tasks, summarize |
+
+## Agent
+
+The `task-planner` agent (`agents/task-planner.md`) is auto-invokable by Claude when someone needs to plan work. It reads the codebase, decomposes goals into 5-10 tasks with dependencies, assigns priorities, and writes specs for complex items.
+
+## Hooks
+
+| Event | Script | Purpose |
+|-------|--------|---------|
+| `SessionStart` | `session-start.sh` | Shows pending task count when a session begins |
+| `TaskCreated` | `sync-task-created.sh` | Queues Claude's built-in tasks for sync to backlog |
+| `TaskCompleted` | `sync-task-completed.sh` | Queues task completions for sync |
+| `SubagentStart` | `sync-subagent-start.sh` | Queues agent assignment for unassigned tasks |
+
+Hooks use a sync-queue pattern: shell scripts write to `sync-queue.jsonl`, the engine drains the queue on the next read operation. This avoids concurrent write issues between hook processes and the MCP server.
+
 ## Engine Internals
 
 ### Storage
@@ -110,15 +155,22 @@ The engine uses [opslog](../opslog), an append-only operation log. Each write (s
 
 The filter compiler (`src/engine/filter.ts`) parses filter expressions into predicate functions. Supports:
 - Attribute matching: `project:X`, `status:pending`, `priority:H`, `agent:explorer`
+- Attribute modifiers: `.before`, `.after`, `.by`, `.is`, `.not`, `.has`, `.hasnt`, `.none`, `.any`, `.startswith`, `.endswith`
 - Tags: `+tag` (has tag), `-tag` (missing tag)
-- Virtual tags: `+ACTIVE`, `+BLOCKED`, `+ANNOTATED`, `+TAGGED`, `+OVERDUE`, `+COMPLETED`, `+DELETED`, `+PENDING`, `+WAITING`, `+RECURRING`
-- Date comparisons: `due.before:tomorrow`, `due.after:2025-01-01`
-- Description text search: bare words match against task description
+- Virtual tags: `+ACTIVE`, `+BLOCKED`, `+BLOCKING`, `+UNBLOCKED`, `+READY`, `+ANNOTATED`, `+TAGGED`, `+OVERDUE`, `+COMPLETED`, `+DELETED`, `+PENDING`, `+WAITING`, `+RECURRING`, `+TODAY`, `+TOMORROW`, `+YESTERDAY`, `+WEEK`, `+MONTH`, `+QUARTER`, `+YEAR`, `+DUE`, `+SCHEDULED`, `+PROJECT`, `+PRIORITY`, `+UDA`
+- Date comparisons: `due.before:tomorrow`, `due.after:2025-01-01`, compound: `end.after:now-7d`
+- Bare numeric IDs: `1`, `42` — match by task ID
+- Bare UUIDs: match by UUID
+- Description text search: bare words match against task description and annotations
 - Boolean logic: `and`, `or`, parentheses for grouping
 
 ### Date Resolution
 
-The date resolver (`src/engine/dates.ts`) converts natural language dates to ISO timestamps: `tomorrow`, `yesterday`, `eow` (end of week), `eom` (end of month), `monday`, `2025-12-31`, etc.
+The date resolver (`src/engine/dates.ts`) converts natural language dates to ISO timestamps: `tomorrow`, `yesterday`, `eow` (end of week), `eom` (end of month), `monday`, `2025-12-31`, relative (`3d`, `2w`, `1m`), compound (`now-7d`, `today+2w`), etc.
+
+### Recurrence
+
+Tasks with `recur` and `due` fields become templates (status: `recurring`). The engine generates pending child instances lazily on read, up to 3 ahead. Children link to the parent via `parent` UUID. Completing an instance triggers generation of the next one. Supports: `daily`, `weekly`, `weekdays`, `biweekly`, `monthly`, `quarterly`, `yearly`, and numeric patterns (`3d`, `2w`).
 
 ### Urgency
 
@@ -126,7 +178,7 @@ Tasks get a computed `urgency` score based on priority, active status, project, 
 
 ### ID Assignment
 
-Pending and recurring tasks get sequential numeric IDs (1, 2, 3...) sorted by entry date. Completed and deleted tasks get ID 0. IDs are transient — they are recalculated on every query, not stored.
+Tasks get a stable, monotonically incrementing numeric ID assigned at creation time. IDs are never reassigned — deleting task 2 does not renumber task 3. New tasks always get `max_id + 1`. UUIDs are the stable identifier for cross-session references.
 
 ### Environment Variables
 
@@ -187,6 +239,6 @@ npm run test:watch   # vitest (watch mode)
 ## Coding Conventions
 
 - Use Zod schemas for all tool inputs — describe every field for LLM comprehension.
-- Errors from the engine should be surfaced as MCP tool errors (`isError: true`), not server crashes.
+- Errors from the engine should be surfaced as MCP tool errors (`isError: true`), not server crashes. All handlers are wrapped with `safe()`.
 - Use `console.error` for logging (stdout is the MCP JSON-RPC channel).
 - No unnecessary abstractions — this is a focused tool, keep it that way.

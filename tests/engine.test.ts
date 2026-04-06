@@ -520,6 +520,64 @@ describe("Engine operations", () => {
     });
   });
 
+  describe("error paths", () => {
+    it("task_done on non-existent ID returns message", async () => {
+      const result = await taskCommand(config, "999", "done");
+      expect(result).toContain("No task found");
+    });
+
+    it("task_delete on non-existent ID returns message", async () => {
+      const result = await taskCommand(config, "999", "delete");
+      expect(result).toContain("No task found");
+    });
+
+    it("task_start on non-existent ID returns message", async () => {
+      const result = await taskCommand(config, "999", "start");
+      expect(result).toContain("No task found");
+    });
+
+    it("modifyTask with no matches returns message", async () => {
+      const result = await modifyTask(config, "project:nonexistent", {});
+      expect(result).toBe("No matching tasks.");
+    });
+
+    it("duplicateTask of non-existent ID returns message", async () => {
+      const result = await duplicateTask(config, "999", {});
+      expect(result).toContain("No task found");
+    });
+
+    it("import with malformed JSON throws", async () => {
+      await expect(importTasks(config, "not json")).rejects.toThrow();
+    });
+
+    it("writeDoc on non-existent task throws", async () => {
+      await expect(writeDoc(config, "999", "content")).rejects.toThrow("No task found");
+    });
+
+    it("readDoc on task without doc returns null", async () => {
+      await addTask(config, "No doc", {});
+      const doc = await readDoc(config, "1");
+      expect(doc).toBeNull();
+    });
+
+    it("deleteDoc on non-existent task throws", async () => {
+      await expect(deleteDoc(config, "999", )).rejects.toThrow("No task found");
+    });
+
+    it("purge of non-deleted task returns error message", async () => {
+      await addTask(config, "Not deleted", {});
+      const result = await taskCommand(config, "1", "purge");
+      expect(result).toContain("Can only purge deleted");
+    });
+
+    it("_blocking field is not present in output", async () => {
+      await addTask(config, "Blocker", {});
+      const tasks = await exportTasks(config, "");
+      const blocker = tasks.find((t) => t.description === "Blocker");
+      expect(blocker?._blocking).toBeUndefined();
+    });
+  });
+
   describe("persistence", () => {
     it("survives shutdown and reopen", async () => {
       await addTask(config, "Persistent", { project: "test" });
