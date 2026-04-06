@@ -198,9 +198,10 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   await drainSyncQueue();
   const s = getStore();
 
-  // Generate recurring task instances
+  // Generate recurring task instances with incrementing IDs
   const allTasks = s.all();
-  const newInstances = generateInstances(allTasks, nextId);
+  let idCounter = nextId();
+  const newInstances = generateInstances(allTasks, () => idCounter++);
   for (const instance of newInstances) {
     await s.set(instance.uuid, instance);
   }
