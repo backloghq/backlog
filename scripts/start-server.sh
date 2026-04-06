@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Standalone server start script (for development / non-plugin use)
 set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -14,5 +13,7 @@ if ! diff -q "${PLUGIN_ROOT}/package.json" "${PLUGIN_DATA}/package.json" &>/dev/
   npm ci --production --ignore-scripts 2>/dev/null
 fi
 
-export NODE_PATH="${PLUGIN_DATA}/node_modules"
+# Symlink node_modules into plugin root for ESM resolution
+ln -sfn "${PLUGIN_DATA}/node_modules" "${PLUGIN_ROOT}/node_modules" 2>/dev/null || true
+
 exec node "${PLUGIN_ROOT}/dist/index.js"

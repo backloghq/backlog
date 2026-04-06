@@ -1,6 +1,6 @@
 {
   "name": "backlog",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Persistent, cross-session task management for Claude Code. Tasks survive sessions so work started by one agent can be picked up by another.",
   "author": {
     "name": "BacklogHQ"
@@ -11,8 +11,7 @@
   "keywords": ["tasks", "planning", "backlog", "persistence", "agent-teams"],
   "mcpServers": {
     "tasks": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"],
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/start-server.sh",
       "env": {
         "TASKDATA_ROOT": "${CLAUDE_PLUGIN_DATA}/projects"
       }
