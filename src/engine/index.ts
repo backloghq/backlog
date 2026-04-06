@@ -168,7 +168,42 @@ function nextId(): number {
   return maxId + 1;
 }
 
-function computeUrgency(t: Task, allTasks: Task[]): number {
+/**
+ * Build a reverse dependency index: maps each UUID to the list of
+ * pending task UUIDs that depend on it. O(n) build, O(1) lookup.
+ */
+function buildBlockingIndex(tasks: Task[]): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  for (const task of tasks) {
+    if (task.status !== "pending" || !task.depends) continue;
+    for (const depUuid of task.depends) {
+      let list = index.get(depUuid);
+      if (!list) {
+        list = [];
+        index.set(depUuid, list);
+      }
+      list.push(task.uuid);
+    }
+  }
+  return index;
+}
+
+/**
+ * Build a numeric ID index: maps task ID to UUID. O(n) build, O(1) lookup.
+ */
+function buildIdIndex(tasks: Task[]): Map<number, string> {
+  const index = new Map<number, string>();
+  for (const task of tasks) {
+    index.set(task.id, task.uuid);
+  }
+  return index;
+}
+
+function computeUrgency(
+  t: Task,
+  tasksByUuid: Map<string, Task>,
+  blockingIndex: Map<string, string[]>,
+): number {
   let urgency = 0;
 
   // Priority
@@ -195,17 +230,15 @@ function computeUrgency(t: Task, allTasks: Task[]): number {
   // Blocked (has unresolved deps)
   if (t.depends && t.depends.length > 0) {
     const blocked = t.depends.some((depUuid) => {
-      const dep = allTasks.find((d) => d.uuid === depUuid);
+      const dep = tasksByUuid.get(depUuid);
       return dep && dep.status === "pending";
     });
     if (blocked) urgency -= 5.0;
   }
 
-  // Blocking (other tasks depend on this)
-  const isBlocking = allTasks.some(
-    (other) => other.depends?.includes(t.uuid) && other.status === "pending",
-  );
-  if (isBlocking) {
+  // Blocking (other tasks depend on this) — O(1) lookup via index
+  const dependents = blockingIndex.get(t.uuid);
+  if (dependents && dependents.length > 0) {
     urgency += 8.0;
     t._blocking = true;
   }
@@ -243,12 +276,13 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   }
 
   const updatedTasks = s.all();
-  updatedTasks.forEach((t) => { t.urgency = computeUrgency(t, updatedTasks); });
+  const tasksByUuid = new Map(updatedTasks.map((t) => [t.uuid, t]));
+  const blockingIndex = buildBlockingIndex(updatedTasks);
+  updatedTasks.forEach((t) => { t.urgency = computeUrgency(t, tasksByUuid, blockingIndex); });
 
   // Strip internal fields before returning
   updatedTasks.forEach((t) => { delete t._blocking; });
 
-  const tasksByUuid = new Map(updatedTasks.map((t) => [t.uuid, t]));
   const predicate = compileFilter(filter, (uuid) => tasksByUuid.get(uuid));
   return updatedTasks.filter(predicate);
 }
@@ -626,10 +660,12 @@ function findTask(id: string): Task | undefined {
   const byUuid = s.get(id);
   if (byUuid) return byUuid;
 
-  // Try as numeric ID
+  // Try as numeric ID using index for O(1) lookup
   const numId = parseInt(id, 10);
   if (!isNaN(numId)) {
-    return s.all().find((t) => t.id === numId);
+    const idIndex = buildIdIndex(s.all());
+    const uuid = idIndex.get(numId);
+    return uuid ? s.get(uuid) : undefined;
   }
 
   return undefined;
