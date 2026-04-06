@@ -39,6 +39,7 @@ Add to your project's `.claude/settings.json`:
 | `/backlog:tasks` | Show the current backlog — pending, active, blocked, overdue tasks |
 | `/backlog:plan` | Break down a goal into tasks with dependencies, priorities, and specs |
 | `/backlog:standup` | Daily standup — done, in progress, blocked, up next |
+| `/backlog:refine` | Groom the backlog — fix vague tasks, missing priorities, broken deps, stale items |
 | `/backlog:spec` | Write a spec document for a task before implementation |
 | `/backlog:implement` | Pick up a task, read its spec, implement it, mark done |
 | `/backlog:handoff` | Prepare for next session — annotate progress, stop active tasks, summarize state |
