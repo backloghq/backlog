@@ -131,29 +131,34 @@ function now(): string {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PROJECT_RE = /^[a-zA-Z0-9_-]+$/;
 
-function validateAttrs(attrs: Record<string, string>): void {
+type TaskAttrs = Record<string, string | boolean>;
+
+function validateAttrs(attrs: TaskAttrs): void {
   if ("description" in attrs) {
-    const desc = attrs.description;
+    const desc = attrs.description as string;
     if (!desc || desc.trim().length === 0) throw new Error("Description cannot be empty.");
     if (desc.length > 500) throw new Error("Description must be under 500 characters.");
   }
-  if (attrs.project && !PROJECT_RE.test(attrs.project)) {
+  if (attrs.project && !PROJECT_RE.test(attrs.project as string)) {
     throw new Error("Project name must contain only letters, numbers, hyphens, and underscores.");
   }
-  if (attrs.priority && !["H", "M", "L", ""].includes(attrs.priority)) {
+  if (attrs.priority && !["H", "M", "L", ""].includes(attrs.priority as string)) {
     throw new Error("Priority must be H, M, or L.");
   }
   if (attrs.due) {
-    try { resolveDate(attrs.due); } catch { throw new Error(`Invalid due date: '${attrs.due}'`); }
+    try { resolveDate(attrs.due as string); } catch { throw new Error(`Invalid due date: '${attrs.due}'`); }
   }
   if (attrs.scheduled) {
-    try { resolveDate(attrs.scheduled); } catch { throw new Error(`Invalid scheduled date: '${attrs.scheduled}'`); }
+    try { resolveDate(attrs.scheduled as string); } catch { throw new Error(`Invalid scheduled date: '${attrs.scheduled}'`); }
   }
   if (attrs.wait) {
-    try { resolveDate(attrs.wait); } catch { throw new Error(`Invalid wait date: '${attrs.wait}'`); }
+    try { resolveDate(attrs.wait as string); } catch { throw new Error(`Invalid wait date: '${attrs.wait}'`); }
+  }
+  if (attrs.until !== undefined && attrs.until !== "") {
+    try { resolveDate(attrs.until as string); } catch { throw new Error(`Invalid until date: "${attrs.until}".`); }
   }
   if (attrs.depends) {
-    for (const dep of attrs.depends.split(",").map((d) => d.trim())) {
+    for (const dep of (attrs.depends as string).split(",").map((d) => d.trim())) {
       if (!UUID_RE.test(dep)) throw new Error(`Invalid dependency UUID: '${dep}'`);
     }
   }
@@ -290,7 +295,7 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
 export async function addTask(
   _config: EngineConfig,
   description: string,
-  attrs: Record<string, string>,
+  attrs: TaskAttrs,
   extraArgs: string[] = [],
 ): Promise<string> {
   if (!description || description.trim().length === 0) throw new Error("Description cannot be empty.");
@@ -313,15 +318,16 @@ export async function addTask(
     status: attrs.recur ? "recurring" : "pending",
     entry: timestamp,
     modified: timestamp,
-    ...(attrs.project && { project: attrs.project }),
+    ...(attrs.project && { project: attrs.project as string }),
     ...(tags.length > 0 && { tags }),
     ...(attrs.priority && { priority: attrs.priority as "H" | "M" | "L" }),
-    ...(attrs.due && { due: formatDate(resolveDate(attrs.due)) }),
-    ...(attrs.wait && { wait: formatDate(resolveDate(attrs.wait)) }),
-    ...(attrs.scheduled && { scheduled: formatDate(resolveDate(attrs.scheduled)) }),
-    ...(attrs.recur && { recur: attrs.recur }),
-    ...(attrs.depends && { depends: attrs.depends.split(",").map((d) => d.trim()) }),
-    ...(attrs.agent && { agent: attrs.agent }),
+    ...(attrs.due && { due: formatDate(resolveDate(attrs.due as string)) }),
+    ...(attrs.wait && { wait: formatDate(resolveDate(attrs.wait as string)) }),
+    ...(attrs.scheduled && { scheduled: formatDate(resolveDate(attrs.scheduled as string)) }),
+    ...(attrs.recur && { recur: attrs.recur as string }),
+    ...(attrs.until && { until: formatDate(resolveDate(attrs.until as string)) }),
+    ...(attrs.depends && { depends: (attrs.depends as string).split(",").map((d) => d.trim()) }),
+    ...(attrs.agent && { agent: attrs.agent as string }),
   };
 
   await s.set(uuid, task);
@@ -331,7 +337,7 @@ export async function addTask(
 export async function modifyTask(
   _config: EngineConfig,
   filter: string,
-  attrs: Record<string, string>,
+  attrs: TaskAttrs,
   extraArgs: string[] = [],
 ): Promise<string> {
   validateAttrs(attrs);
@@ -347,25 +353,26 @@ export async function modifyTask(
   for (const task of matches) {
     const updated = { ...task, modified: now() };
 
-    if (attrs.description) updated.description = attrs.description;
-    if (attrs.project !== undefined) updated.project = attrs.project || undefined;
+    if (attrs.description) updated.description = attrs.description as string;
+    if (attrs.project !== undefined) updated.project = (attrs.project as string) || undefined;
     if (attrs.priority !== undefined) updated.priority = (attrs.priority as "H" | "M" | "L") || undefined;
-    if (attrs.due !== undefined) updated.due = attrs.due ? formatDate(resolveDate(attrs.due)) : undefined;
-    if (attrs.depends !== undefined) updated.depends = attrs.depends ? attrs.depends.split(",").map((d) => d.trim()) : undefined;
-    if (attrs.wait !== undefined) updated.wait = attrs.wait ? formatDate(resolveDate(attrs.wait)) : undefined;
-    if (attrs.scheduled !== undefined) updated.scheduled = attrs.scheduled ? formatDate(resolveDate(attrs.scheduled)) : undefined;
-    if (attrs.recur !== undefined) updated.recur = attrs.recur || undefined;
-    if (attrs.agent !== undefined) updated.agent = attrs.agent || undefined;
-    if (attrs.has_doc !== undefined) updated.has_doc = attrs.has_doc ? true : undefined;
-    if (attrs.end !== undefined) updated.end = attrs.end || undefined;
+    if (attrs.due !== undefined) updated.due = attrs.due ? formatDate(resolveDate(attrs.due as string)) : undefined;
+    if (attrs.depends !== undefined) updated.depends = attrs.depends ? (attrs.depends as string).split(",").map((d) => d.trim()) : undefined;
+    if (attrs.wait !== undefined) updated.wait = attrs.wait ? formatDate(resolveDate(attrs.wait as string)) : undefined;
+    if (attrs.scheduled !== undefined) updated.scheduled = attrs.scheduled ? formatDate(resolveDate(attrs.scheduled as string)) : undefined;
+    if (attrs.recur !== undefined) updated.recur = (attrs.recur as string) || undefined;
+    if (attrs.until !== undefined) updated.until = attrs.until ? formatDate(resolveDate(attrs.until as string)) : undefined;
+    if (attrs.agent !== undefined) updated.agent = (attrs.agent as string) || undefined;
+    if (attrs.has_doc !== undefined) updated.has_doc = attrs.has_doc === true ? true : undefined;
+    if (attrs.end !== undefined) updated.end = (attrs.end as string) || undefined;
     if (attrs.status !== undefined) {
-      if (!(VALID_STATUSES as readonly string[]).includes(attrs.status)) {
+      if (!(VALID_STATUSES as readonly string[]).includes(attrs.status as string)) {
         throw new Error(`Invalid status: '${attrs.status}'. Must be one of: ${VALID_STATUSES.join(", ")}`);
       }
       updated.status = attrs.status as Task["status"];
     }
     if (attrs.priority !== undefined && attrs.priority !== "") {
-      if (!(VALID_PRIORITIES as readonly string[]).includes(attrs.priority)) {
+      if (!(VALID_PRIORITIES as readonly string[]).includes(attrs.priority as string)) {
         throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
       }
     }
@@ -595,7 +602,7 @@ export async function writeDoc(_config: EngineConfig, id: string, content: strin
 
   await mkdir(docsDir(), { recursive: true });
   await writeFile(docPath(task.uuid), content, "utf-8");
-  await modifyTask(_config, task.uuid, { has_doc: "true" }, ["+doc"]);
+  await modifyTask(_config, task.uuid, { has_doc: true }, ["+doc"]);
   return `Doc written for task ${task.uuid}.`;
 }
 
@@ -615,7 +622,7 @@ export async function deleteDoc(_config: EngineConfig, id: string): Promise<stri
   if (!task) throw new Error(`No task found matching '${id}'`);
 
   try { await unlink(docPath(task.uuid)); } catch { /* ok */ }
-  await modifyTask(_config, task.uuid, { has_doc: "" }, ["-doc"]);
+  await modifyTask(_config, task.uuid, { has_doc: false }, ["-doc"]);
   return `Doc deleted for task ${task.uuid}.`;
 }
 

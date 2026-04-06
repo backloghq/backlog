@@ -2,6 +2,7 @@ export interface Task {
   uuid: string;
   id: number;
   description: string;
+  /** Task status. "waiting" is typically virtual — derived from pending tasks with a future `wait` date. */
   status: "pending" | "completed" | "deleted" | "recurring" | "waiting";
   entry: string;
   modified: string;
@@ -22,7 +23,6 @@ export interface Task {
   urgency?: number;
   // Recurrence tracking
   parent?: string;
-  mask?: string;
 }
 
 export interface Annotation {

@@ -677,6 +677,54 @@ describe("Engine operations", () => {
     });
   });
 
+  describe("until field", () => {
+    it("stores until on addTask", async () => {
+      await addTask(config, "Recurring with until", { due: "tomorrow", recur: "daily", until: "2099-12-31" });
+      const tasks = await exportTasks(config, "status:recurring");
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].until).toBeDefined();
+    });
+
+    it("stores until via modifyTask", async () => {
+      await addTask(config, "Recurring", { due: "tomorrow", recur: "daily" });
+      const tasks = await exportTasks(config, "status:recurring");
+      await modifyTask(config, tasks[0].uuid, { until: "2099-06-30" });
+      const updated = await exportTasks(config, "status:recurring");
+      expect(updated[0].until).toBeDefined();
+    });
+
+    it("rejects invalid until date", async () => {
+      await expect(
+        addTask(config, "Bad until", { due: "tomorrow", recur: "daily", until: "not-a-date-xyz" }),
+      ).rejects.toThrow("Invalid until date");
+    });
+
+    it("recurring task with until — no instances past end date", async () => {
+      // Set until to 2 days from now — with daily recurrence, should cap at 2 instances (not 3)
+      const untilDate = new Date(Date.now() + 2 * 86400000);
+      const untilStr = untilDate.toISOString().slice(0, 10);
+      await addTask(config, "Capped recurrence", { due: "tomorrow", recur: "daily", until: untilStr });
+      const all = await exportTasks(config, "");
+      const template = all.find((t) => t.status === "recurring");
+      const instances = all.filter((t) => t.status === "pending" && t.parent === template?.uuid);
+      // With until set to ~2 days out, should have at most 2 instances
+      expect(instances.length).toBeLessThanOrEqual(2);
+      for (const inst of instances) {
+        expect(new Date(inst.due!).getTime()).toBeLessThanOrEqual(untilDate.getTime() + 86400000);
+      }
+    });
+  });
+
+  describe("has_doc boolean", () => {
+    it("writeDoc sets has_doc to boolean true", async () => {
+      await addTask(config, "Doc bool test", {});
+      await writeDoc(config, "1", "# Test");
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].has_doc).toBe(true);
+      expect(typeof tasks[0].has_doc).toBe("boolean");
+    });
+  });
+
   describe("input validation", () => {
     it("rejects empty description", async () => {
       await expect(addTask(config, "", {})).rejects.toThrow("Description cannot be empty");
