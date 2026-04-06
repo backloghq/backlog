@@ -430,8 +430,40 @@ describe("Engine operations", () => {
   describe("scheduled and recur", () => {
     it("adds with scheduled date", async () => {
       await addTask(config, "Scheduled", { scheduled: "2099-12-31" });
-      const tasks = await exportTasks(config, "");
+      const tasks = await exportTasks(config, "status:pending");
       expect(tasks[0].scheduled).toBeDefined();
+    });
+
+    it("generates instances for recurring tasks", async () => {
+      await addTask(config, "Daily standup", { due: "tomorrow", recur: "daily" });
+      const all = await exportTasks(config, "");
+      // Should have the template (recurring) + generated instances (pending)
+      const template = all.find((t) => t.status === "recurring");
+      const instances = all.filter((t) => t.status === "pending" && t.parent === template?.uuid);
+      expect(template).toBeDefined();
+      expect(instances.length).toBeGreaterThanOrEqual(1);
+      expect(instances[0].description).toBe("Daily standup");
+    });
+
+    it("does not generate more than limit instances", async () => {
+      await addTask(config, "Weekly review", { due: "tomorrow", recur: "weekly" });
+      const all = await exportTasks(config, "");
+      const template = all.find((t) => t.status === "recurring");
+      const instances = all.filter((t) => t.status === "pending" && t.parent === template?.uuid);
+      expect(instances.length).toBeLessThanOrEqual(3);
+    });
+
+    it("completing an instance allows new generation", async () => {
+      await addTask(config, "Recurring task", { due: "tomorrow", recur: "daily" });
+      let all = await exportTasks(config, "");
+      const template = all.find((t) => t.status === "recurring")!;
+      const firstInstance = all.find((t) => t.parent === template.uuid)!;
+
+      await taskCommand(config, String(firstInstance.id), "done");
+
+      all = await exportTasks(config, "");
+      const pending = all.filter((t) => t.parent === template.uuid && t.status === "pending");
+      expect(pending.length).toBeGreaterThanOrEqual(1);
     });
   });
 

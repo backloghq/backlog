@@ -6,6 +6,7 @@ import { Store } from "opslog";
 import type { Task } from "./types.js";
 import { compileFilter } from "./filter.js";
 import { resolveDate, formatDate } from "./dates.js";
+import { generateInstances } from "./recurrence.js";
 
 export interface EngineConfig {
   dataDir: string;
@@ -188,11 +189,19 @@ function computeUrgency(t: Task, allTasks: Task[]): number {
 export async function exportTasks(_config: EngineConfig, filter: string): Promise<Task[]> {
   await drainSyncQueue();
   const s = getStore();
+
+  // Generate recurring task instances
   const allTasks = s.all();
-  allTasks.forEach((t) => { t.urgency = computeUrgency(t, allTasks); });
+  const newInstances = generateInstances(allTasks, nextId);
+  for (const instance of newInstances) {
+    await s.set(instance.uuid, instance);
+  }
+
+  const updatedTasks = s.all();
+  updatedTasks.forEach((t) => { t.urgency = computeUrgency(t, updatedTasks); });
 
   const predicate = compileFilter(filter);
-  return allTasks.filter(predicate);
+  return updatedTasks.filter(predicate);
 }
 
 export async function addTask(
