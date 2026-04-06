@@ -9,6 +9,7 @@ import {
   taskCommand,
   undo,
   getUnique,
+  importTasks,
   type TaskWarriorConfig,
 } from "./taskwarrior.js";
 
@@ -49,16 +50,18 @@ function createServer(config: TaskWarriorConfig): McpServer {
         due: z.string().optional().describe("Due date, e.g. 'tomorrow', '2025-12-31', 'eow'"),
         depends: z.string().optional().describe("UUID(s) of tasks this depends on, comma-separated"),
         wait: z.string().optional().describe("Wait date — task hidden until this date"),
+        agent: z.string().optional().describe("Agent identity, e.g. 'explorer', 'planner', 'reviewer'"),
         extra: z.string().optional().describe("Additional raw TaskWarrior attributes, e.g. '+frontend scheduled:monday'"),
       }),
     },
-    async ({ description, project, tags, priority, due, depends, wait, extra }) => {
+    async ({ description, project, tags, priority, due, depends, wait, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (project) attrs.project = project;
       if (priority) attrs.priority = priority;
       if (due) attrs.due = due;
       if (depends) attrs.depends = depends;
       if (wait) attrs.wait = wait;
+      if (agent) attrs.agent = agent;
 
       const extraArgs: string[] = [];
       if (tags && tags.length > 0) {
@@ -87,10 +90,11 @@ function createServer(config: TaskWarriorConfig): McpServer {
         due: z.string().optional().describe("New due date"),
         depends: z.string().optional().describe("New dependency UUIDs"),
         wait: z.string().optional().describe("New wait date"),
+        agent: z.string().optional().describe("Agent identity, e.g. 'explorer', 'planner', 'reviewer'"),
         extra: z.string().optional().describe("Additional raw attributes"),
       }),
     },
-    async ({ filter, description, project, tags, priority, due, depends, wait, extra }) => {
+    async ({ filter, description, project, tags, priority, due, depends, wait, agent, extra }) => {
       const attrs: Record<string, string> = {};
       if (description) attrs.description = description;
       if (project !== undefined) attrs.project = project;
@@ -98,6 +102,7 @@ function createServer(config: TaskWarriorConfig): McpServer {
       if (due !== undefined) attrs.due = due;
       if (depends !== undefined) attrs.depends = depends;
       if (wait !== undefined) attrs.wait = wait;
+      if (agent !== undefined) attrs.agent = agent;
 
       const extraArgs: string[] = [];
       if (tags && tags.length > 0) {
@@ -245,6 +250,52 @@ function createServer(config: TaskWarriorConfig): McpServer {
     async () => {
       const tags = await getUnique(config, "tags");
       return { content: [{ type: "text" as const, text: JSON.stringify(tags) }] };
+    }
+  );
+
+  server.registerTool(
+    "task_denotate",
+    {
+      title: "Remove Annotation",
+      description: "Remove an annotation from a task. Pass the exact annotation text to remove.",
+      inputSchema: z.object({
+        id: z.string().describe("Task ID number or UUID"),
+        text: z.string().describe("Exact annotation text to remove"),
+      }),
+    },
+    async ({ id, text }) => {
+      const result = await taskCommand(config, id, "denotate", [text]);
+      return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_purge",
+    {
+      title: "Purge Task",
+      description: "Permanently remove deleted task(s) from the database. Task must be deleted first.",
+      inputSchema: z.object({
+        id: z.string().describe("Task ID number or UUID of a deleted task"),
+      }),
+    },
+    async ({ id }) => {
+      const result = await taskCommand(config, id, "purge");
+      return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_import",
+    {
+      title: "Import Tasks",
+      description: "Import tasks from a JSON array. Each object should have at least a 'description' field. Can create new tasks or update existing ones by UUID.",
+      inputSchema: z.object({
+        tasks: z.string().describe("JSON array of task objects, e.g. '[{\"description\":\"My task\",\"project\":\"foo\"}]'"),
+      }),
+    },
+    async ({ tasks }) => {
+      const result = await importTasks(config, tasks);
+      return { content: [{ type: "text" as const, text: result }] };
     }
   );
 

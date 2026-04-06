@@ -49,15 +49,18 @@ Add to your project's `.claude/settings.json`:
 | Tool | Description |
 |------|-------------|
 | `task_list` | Query tasks with [filter syntax](https://taskwarrior.org/docs/filter/) |
-| `task_add` | Create a task with description, project, tags, priority, due date |
+| `task_add` | Create a task with description, project, tags, priority, due date, agent |
 | `task_modify` | Update existing task(s) |
 | `task_done` | Mark task as completed |
 | `task_delete` | Delete a task |
 | `task_annotate` | Add a note to a task |
+| `task_denotate` | Remove a note from a task |
 | `task_start` | Mark task as actively being worked on |
 | `task_stop` | Stop working on a task |
 | `task_undo` | Undo the last change |
 | `task_info` | Get full details for a task |
+| `task_import` | Bulk import tasks from JSON |
+| `task_purge` | Permanently remove deleted tasks |
 | `task_projects` | List all project names |
 | `task_tags` | List all tags |
 
@@ -71,6 +74,16 @@ project:backend +bug              # bugs in backend project
 priority:H due.before:friday      # high priority due before friday
 +OVERDUE                          # overdue tasks
 +ACTIVE                           # tasks currently being worked on
+agent:explorer                    # tasks assigned to the explorer agent
+```
+
+## Agent Identity
+
+Tasks support an `agent` field (TaskWarrior UDA) for tracking which agent created or owns a task. Use it in `task_add`, `task_modify`, and filter with `agent:<name>`.
+
+```
+task_add  description:"Investigate bug"  agent:"explorer"
+task_list filter:"agent:explorer status:pending"
 ```
 
 ## Development

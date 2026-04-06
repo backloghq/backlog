@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
-import { mkdir, access, writeFile } from "node:fs/promises";
+import { mkdir, access, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 export interface TaskWarriorConfig {
   taskBin: string;
@@ -47,6 +48,10 @@ export async function ensureSetup(config: TaskWarriorConfig): Promise<void> {
       "confirmation=off",
       "bulk=0",
       "verbose=nothing",
+      "",
+      "# UDAs for agent workflow",
+      "uda.agent.type=string",
+      "uda.agent.label=Agent",
       "",
     ].join("\n");
     await writeFile(config.taskRc, rcContent, "utf-8");
@@ -127,6 +132,18 @@ export async function taskCommand(
 export async function undo(config: TaskWarriorConfig): Promise<string> {
   const result = await run(config, ["undo"]);
   return result.stdout.trim() || "Undo completed.";
+}
+
+export async function importTasks(config: TaskWarriorConfig, tasksJson: string): Promise<string> {
+  const tmpDir = await mkdtemp(join(tmpdir(), "tw-import-"));
+  const tmpFile = join(tmpDir, "import.json");
+  try {
+    await writeFile(tmpFile, tasksJson, "utf-8");
+    const result = await run(config, ["import", tmpFile]);
+    return result.stdout.trim() || "Import completed.";
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 }
 
 export async function getUnique(config: TaskWarriorConfig, attribute: string): Promise<string[]> {

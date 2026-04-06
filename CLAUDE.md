@@ -59,7 +59,7 @@ Claude Code / Agent Teams
 src/
   index.ts          # Entry point: server init, tool registration, stdio transport
   taskwarrior.ts    # CLI wrapper: execFile, JSON parsing, error handling
-  types.ts          # Shared TypeScript types for task data
+  types.ts          # Shared TypeScript types for task data (reserved for future use)
 ```
 
 Flat structure — this is a focused tool, not a framework. All tool registrations live in `index.ts`.
@@ -76,18 +76,22 @@ Each tool maps to a TaskWarrior command. Use `rc.confirmation=off` and `rc.bulk=
 | `task_done` | `task <id> done` | Mark task(s) complete |
 | `task_delete` | `task <id> delete` | Delete task(s) |
 | `task_annotate` | `task <id> annotate` | Add annotation text (great for cross-session context) |
+| `task_denotate` | `task <id> denotate` | Remove annotation by exact text |
 | `task_start` | `task <id> start` | Mark task as actively being worked on |
 | `task_stop` | `task <id> stop` | Stop active time tracking |
 | `task_undo` | `task undo` | Undo last modification |
 | `task_info` | `task <id> export` | Get full JSON detail for a single task by ID or UUID |
+| `task_import` | `task import` | Bulk import tasks from JSON array |
+| `task_purge` | `task <id> purge` | Permanently remove deleted tasks |
 | `task_projects` | `task _unique project` | List all project names |
 | `task_tags` | `task _unique tags` | List all tags |
 
 ### Input Design Principles
 
 - `task_list` accepts a `filter` string — expose TaskWarrior's full filter syntax rather than reimplementing it. Examples: `project:myproject +bug status:pending`, `due.before:tomorrow`, `+OVERDUE`.
-- `task_add` accepts structured fields: `description` (required), `project`, `tags` (array), `priority` (H/M/L), `due`, `depends`, `wait`, plus an optional `extra` string for arbitrary TW attributes.
+- `task_add` accepts structured fields: `description` (required), `project`, `tags` (array), `priority` (H/M/L), `due`, `depends`, `wait`, `agent` (UDA), plus an optional `extra` string for arbitrary TW attributes.
 - `task_modify` accepts `filter` (required) plus the same fields as add.
+- `task_import` accepts a `tasks` string containing a JSON array of task objects.
 - ID-based tools (`task_done`, `task_delete`, etc.) accept `id` which can be a task ID number or UUID string.
 
 ### Output
@@ -193,4 +197,4 @@ The server auto-creates `TASKDATA` and a minimal `.taskrc` on first run. No manu
 - **Config**: TaskWarrior 3.x requires a `.taskrc` file. If missing, run `task` interactively once to create it, or create manually.
 - **JSON export**: Returns an array of task objects. Key fields: `id`, `uuid`, `description`, `status` (pending/completed/deleted/waiting), `project`, `tags`, `priority`, `due`, `entry`, `modified`, `annotations`.
 - **Filter syntax**: Very powerful — supports attribute matching (`project:X`), tags (`+tag`/`-tag`), date math (`due.before:eow`), virtual tags (`+OVERDUE`, `+ACTIVE`, `+BLOCKED`), regex (`/pattern/`), boolean operators (`and`, `or`, `xor` with parentheses).
-- **UDAs**: Can define custom attributes via config. Consider adding `agent` UDA if agent identity tracking is needed — but this is optional and can be done later.
+- **UDAs**: The auto-generated `.taskrc` defines an `agent` UDA (type: string) for tracking which agent created or owns a task. Filter with `agent:explorer`, `agent:planner`, etc.

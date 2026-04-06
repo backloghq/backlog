@@ -12,6 +12,7 @@ import {
   taskCommand,
   undo,
   getUnique,
+  importTasks,
   type TaskWarriorConfig,
 } from "../src/taskwarrior.js";
 
@@ -275,6 +276,65 @@ describe("TaskWarrior CLI integration", () => {
       expect(tags).toContain("frontend");
       expect(tags).toContain("backend");
       expect(tags).toHaveLength(2);
+    });
+  });
+
+  describe("denotate", () => {
+    it("removes an annotation from a task", async () => {
+      await addTask(config, "Denotate test", {});
+      await taskCommand(config, "1", "annotate", ["Remove me"]);
+      await taskCommand(config, "1", "annotate", ["Keep me"]);
+
+      await taskCommand(config, "1", "denotate", ["Remove me"]);
+
+      const tasks = await exportTasks(config, "");
+      const task = tasks[0] as Record<string, unknown>;
+      const annotations = task.annotations as Array<Record<string, unknown>>;
+      expect(annotations).toHaveLength(1);
+      expect(annotations[0].description).toBe("Keep me");
+    });
+  });
+
+  describe("importTasks", () => {
+    it("imports tasks from JSON", async () => {
+      const tasksJson = JSON.stringify([
+        { description: "Imported task one", project: "imported" },
+        { description: "Imported task two", project: "imported" },
+      ]);
+
+      await importTasks(config, tasksJson);
+
+      const tasks = await exportTasks(config, "project:imported");
+      expect(tasks).toHaveLength(2);
+    });
+
+    it("imports a single task", async () => {
+      const tasksJson = JSON.stringify([
+        { description: "Single import", priority: "H" },
+      ]);
+
+      await importTasks(config, tasksJson);
+
+      const tasks = await exportTasks(config, "");
+      expect(tasks).toHaveLength(1);
+      expect((tasks[0] as Record<string, unknown>).priority).toBe("H");
+    });
+  });
+
+  describe("UDA agent field", () => {
+    it("supports agent attribute on tasks", async () => {
+      await addTask(config, "Agent task", { agent: "explorer" });
+      const tasks = await exportTasks(config, "");
+      const task = tasks[0] as Record<string, unknown>;
+      expect(task.agent).toBe("explorer");
+    });
+
+    it("filters by agent attribute", async () => {
+      await addTask(config, "Explorer task", { agent: "explorer" });
+      await addTask(config, "Planner task", { agent: "planner" });
+      const tasks = await exportTasks(config, "agent:explorer");
+      expect(tasks).toHaveLength(1);
+      expect((tasks[0] as Record<string, unknown>).description).toBe("Explorer task");
     });
   });
 });

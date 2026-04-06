@@ -64,7 +64,10 @@ describe("MCP Server integration", () => {
     expect(names).toContain("task_info");
     expect(names).toContain("task_projects");
     expect(names).toContain("task_tags");
-    expect(names).toHaveLength(12);
+    expect(names).toContain("task_denotate");
+    expect(names).toContain("task_purge");
+    expect(names).toContain("task_import");
+    expect(names).toHaveLength(15);
   });
 
   it("adds and lists a task", async () => {
@@ -267,5 +270,76 @@ describe("MCP Server integration", () => {
     const result = await call(client, "task_list", { filter: "project:nonexistent" });
     const tasks = parseContent(result) as Array<unknown>;
     expect(tasks).toHaveLength(0);
+  });
+
+  it("denotates (removes annotation from) a task", async () => {
+    await call(client, "task_add", { description: "Denotate test" });
+    await call(client, "task_annotate", { id: "1", text: "Remove me" });
+    await call(client, "task_annotate", { id: "1", text: "Keep me" });
+
+    await call(client, "task_denotate", { id: "1", text: "Remove me" });
+
+    const result = await call(client, "task_info", { id: "1" });
+    const task = parseContent(result) as Record<string, unknown>;
+    const annotations = task.annotations as Array<Record<string, unknown>>;
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].description).toBe("Keep me");
+  });
+
+  it("purges a deleted task", async () => {
+    await call(client, "task_add", { description: "Purge me" });
+    // Get UUID before deleting (deleted tasks lose their numeric ID)
+    const infoResult = await call(client, "task_info", { id: "1" });
+    const uuid = (parseContent(infoResult) as Record<string, unknown>).uuid as string;
+
+    await call(client, "task_delete", { id: "1" });
+    await call(client, "task_purge", { id: uuid });
+
+    const result = await call(client, "task_list", { filter: "status:deleted" });
+    const tasks = parseContent(result) as Array<unknown>;
+    expect(tasks).toHaveLength(0);
+  });
+
+  it("imports tasks from JSON", async () => {
+    const tasksJson = JSON.stringify([
+      { description: "Imported A", project: "import-test" },
+      { description: "Imported B", project: "import-test" },
+    ]);
+
+    await call(client, "task_import", { tasks: tasksJson });
+
+    const result = await call(client, "task_list", { filter: "project:import-test" });
+    const tasks = parseContent(result) as Array<unknown>;
+    expect(tasks).toHaveLength(2);
+  });
+
+  it("adds a task with agent UDA", async () => {
+    await call(client, "task_add", {
+      description: "Agent-assigned task",
+      agent: "explorer",
+    });
+
+    const result = await call(client, "task_info", { id: "1" });
+    const task = parseContent(result) as Record<string, unknown>;
+    expect(task.agent).toBe("explorer");
+  });
+
+  it("filters tasks by agent UDA", async () => {
+    await call(client, "task_add", { description: "A", agent: "explorer" });
+    await call(client, "task_add", { description: "B", agent: "planner" });
+    await call(client, "task_add", { description: "C", agent: "explorer" });
+
+    const result = await call(client, "task_list", { filter: "agent:explorer" });
+    const tasks = parseContent(result) as Array<unknown>;
+    expect(tasks).toHaveLength(2);
+  });
+
+  it("modifies agent UDA on a task", async () => {
+    await call(client, "task_add", { description: "Reassign me", agent: "explorer" });
+    await call(client, "task_modify", { filter: "1", agent: "reviewer" });
+
+    const result = await call(client, "task_info", { id: "1" });
+    const task = parseContent(result) as Record<string, unknown>;
+    expect(task.agent).toBe("reviewer");
   });
 });
