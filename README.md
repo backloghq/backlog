@@ -7,11 +7,10 @@ Zero external dependencies — pure TypeScript with event-sourced storage. Insta
 ## Install as Claude Code Plugin
 
 ```bash
-# From the marketplace (once published)
-/plugin install backlog@marketplace-name
-
-# Or load locally for development
-claude --plugin-dir /path/to/agent-teams-task-mcp
+# Clone, build, and load
+git clone https://github.com/backloghq/backlog.git
+cd backlog && npm install && npm run build
+claude --plugin-dir /path/to/backlog
 ```
 
 ### Standalone MCP server
