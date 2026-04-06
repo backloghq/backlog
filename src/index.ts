@@ -10,6 +10,9 @@ import {
   undo,
   getUnique,
   importTasks,
+  writeDoc,
+  readDoc,
+  deleteDoc,
   type TaskWarriorConfig,
 } from "./taskwarrior.js";
 
@@ -296,6 +299,60 @@ function createServer(config: TaskWarriorConfig): McpServer {
     },
     async ({ tasks }) => {
       const result = await importTasks(config, tasks);
+      return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_doc_write",
+    {
+      title: "Write Task Doc",
+      description:
+        "Attach or update a document (spec, notes, context) to a task. " +
+        "Stored as a markdown file. Automatically adds +doc tag and has_doc:yes to the task.",
+      inputSchema: z.object({
+        id: z.string().describe("Task ID number or UUID"),
+        content: z.string().describe("Document content (markdown)"),
+      }),
+    },
+    async ({ id, content }) => {
+      const result = await writeDoc(config, id, content);
+      return { content: [{ type: "text" as const, text: result }] };
+    }
+  );
+
+  server.registerTool(
+    "task_doc_read",
+    {
+      title: "Read Task Doc",
+      description: "Read the document attached to a task. Returns null if no doc exists.",
+      inputSchema: z.object({
+        id: z.string().describe("Task ID number or UUID"),
+      }),
+    },
+    async ({ id }) => {
+      const doc = await readDoc(config, id);
+      if (doc === null) {
+        return {
+          content: [{ type: "text" as const, text: "No doc attached to this task." }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text" as const, text: doc }] };
+    }
+  );
+
+  server.registerTool(
+    "task_doc_delete",
+    {
+      title: "Delete Task Doc",
+      description: "Remove the document attached to a task. Removes +doc tag and has_doc from the task.",
+      inputSchema: z.object({
+        id: z.string().describe("Task ID number or UUID"),
+      }),
+    },
+    async ({ id }) => {
+      const result = await deleteDoc(config, id);
       return { content: [{ type: "text" as const, text: result }] };
     }
   );

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { access } from "node:fs/promises";
 import {
   getConfig,
   ensureSetup,
@@ -13,6 +14,9 @@ import {
   undo,
   getUnique,
   importTasks,
+  writeDoc,
+  readDoc,
+  deleteDoc,
   type TaskWarriorConfig,
 } from "../src/taskwarrior.js";
 
@@ -335,6 +339,72 @@ describe("TaskWarrior CLI integration", () => {
       const tasks = await exportTasks(config, "agent:explorer");
       expect(tasks).toHaveLength(1);
       expect((tasks[0] as Record<string, unknown>).description).toBe("Explorer task");
+    });
+  });
+
+  describe("task docs", () => {
+    it("writes and reads a doc", async () => {
+      await addTask(config, "Doc test", {});
+      const specContent = "# Spec\n\nThis is a **markdown** spec.\n\n- Item 1\n- Item 2\n";
+      await writeDoc(config, "1", specContent);
+      const doc = await readDoc(config, "1");
+      expect(doc).toBe(specContent);
+    });
+
+    it("auto-tags task with +doc and has_doc:yes", async () => {
+      await addTask(config, "Doc tag test", {});
+      await writeDoc(config, "1", "Some doc content");
+      const tasks = await exportTasks(config, "+doc");
+      expect(tasks).toHaveLength(1);
+      const task = tasks[0] as Record<string, unknown>;
+      expect(task.tags).toContain("doc");
+      expect(task.has_doc).toBe("yes");
+    });
+
+    it("returns null for task without doc", async () => {
+      await addTask(config, "No doc", {});
+      const doc = await readDoc(config, "1");
+      expect(doc).toBeNull();
+    });
+
+    it("updates an existing doc", async () => {
+      await addTask(config, "Update doc", {});
+      await writeDoc(config, "1", "Version 1");
+      await writeDoc(config, "1", "Version 2");
+      const doc = await readDoc(config, "1");
+      expect(doc).toBe("Version 2");
+    });
+
+    it("deletes a doc and removes tag/UDA", async () => {
+      await addTask(config, "Delete doc test", {});
+      await writeDoc(config, "1", "To be deleted");
+      await deleteDoc(config, "1");
+
+      const doc = await readDoc(config, "1");
+      expect(doc).toBeNull();
+
+      const tasks = await exportTasks(config, "1");
+      const task = tasks[0] as Record<string, unknown>;
+      expect(task.tags || []).not.toContain("doc");
+      expect(task.has_doc).toBeUndefined();
+    });
+
+    it("creates doc file in docs/ subdirectory", async () => {
+      await addTask(config, "File path test", {});
+      await writeDoc(config, "1", "Content");
+      const tasks = await exportTasks(config, "1");
+      const uuid = (tasks[0] as Record<string, unknown>).uuid as string;
+      const filePath = join(tmpDir, "docs", `${uuid}.md`);
+      await access(filePath); // throws if file doesn't exist
+    });
+
+    it("works with UUID as id parameter", async () => {
+      await addTask(config, "UUID doc test", {});
+      const tasks = await exportTasks(config, "1");
+      const uuid = (tasks[0] as Record<string, unknown>).uuid as string;
+      await writeDoc(config, uuid, "UUID-keyed doc");
+      const doc = await readDoc(config, uuid);
+      expect(doc).toBe("UUID-keyed doc");
     });
   });
 });

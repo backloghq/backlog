@@ -61,6 +61,9 @@ Add to your project's `.claude/settings.json`:
 | `task_info` | Get full details for a task |
 | `task_import` | Bulk import tasks from JSON |
 | `task_purge` | Permanently remove deleted tasks |
+| `task_doc_write` | Attach/update a markdown document to a task |
+| `task_doc_read` | Read the document attached to a task |
+| `task_doc_delete` | Remove a document from a task |
 | `task_projects` | List all project names |
 | `task_tags` | List all tags |
 
@@ -77,6 +80,23 @@ priority:H due.before:friday      # high priority due before friday
 agent:explorer                    # tasks assigned to the explorer agent
 ```
 
+## Task Docs
+
+Attach markdown documents (specs, context, handoff notes) to any task. Docs are stored as files in the task data directory, keyed by task UUID.
+
+```
+task_doc_write  id:"1"  content:"# Spec\n\nBuild the auth flow.\n"
+task_doc_read   id:"1"
+task_doc_delete id:"1"
+```
+
+Writing a doc automatically adds a `+doc` tag and sets `has_doc:yes` on the task, so agents can discover which tasks have docs:
+
+```
+task_list filter:"+doc"              # tasks with attached docs
+task_list filter:"has_doc:yes"       # same, via UDA
+```
+
 ## Agent Identity
 
 Tasks support an `agent` field (TaskWarrior UDA) for tracking which agent created or owns a task. Use it in `task_add`, `task_modify`, and filter with `agent:<name>`.
@@ -90,6 +110,7 @@ task_list filter:"agent:explorer status:pending"
 
 ```bash
 npm run build          # compile TypeScript
+npm run lint           # run ESLint
 npm test               # run tests
 npm run test:coverage  # run tests with coverage
 npm run dev            # watch mode

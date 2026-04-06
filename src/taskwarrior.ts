@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, access, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, access, writeFile, readFile, unlink, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -52,6 +52,9 @@ export async function ensureSetup(config: TaskWarriorConfig): Promise<void> {
       "# UDAs for agent workflow",
       "uda.agent.type=string",
       "uda.agent.label=Agent",
+      "uda.has_doc.type=string",
+      "uda.has_doc.label=Has Doc",
+      "uda.has_doc.values=yes",
       "",
     ].join("\n");
     await writeFile(config.taskRc, rcContent, "utf-8");
@@ -112,7 +115,7 @@ export async function modifyTask(
 ): Promise<string> {
   const args = [...filter.split(/\s+/), "modify", ...extraArgs];
   for (const [key, value] of Object.entries(attrs)) {
-    if (value) args.push(`${key}:${value}`);
+    if (value !== undefined) args.push(`${key}:${value}`);
   }
   const result = await run(config, args);
   return result.stdout.trim() || "Task modified.";
@@ -144,6 +147,51 @@ export async function importTasks(config: TaskWarriorConfig, tasksJson: string):
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
+}
+
+function docsDir(config: TaskWarriorConfig): string {
+  return join(config.taskData, "docs");
+}
+
+function docPath(config: TaskWarriorConfig, uuid: string): string {
+  return join(docsDir(config), `${uuid}.md`);
+}
+
+async function resolveUuid(config: TaskWarriorConfig, id: string): Promise<string> {
+  const tasks = await exportTasks(config, id);
+  if (tasks.length === 0) throw new Error(`No task found matching '${id}'`);
+  return (tasks[0] as Record<string, unknown>).uuid as string;
+}
+
+export async function writeDoc(config: TaskWarriorConfig, id: string, content: string): Promise<string> {
+  const uuid = await resolveUuid(config, id);
+  const dir = docsDir(config);
+  await mkdir(dir, { recursive: true });
+  await writeFile(docPath(config, uuid), content, "utf-8");
+  // Tag the task and set has_doc UDA
+  await modifyTask(config, uuid, { has_doc: "yes" }, ["+doc"]);
+  return `Doc written for task ${uuid}.`;
+}
+
+export async function readDoc(config: TaskWarriorConfig, id: string): Promise<string | null> {
+  const uuid = await resolveUuid(config, id);
+  try {
+    return await readFile(docPath(config, uuid), "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteDoc(config: TaskWarriorConfig, id: string): Promise<string> {
+  const uuid = await resolveUuid(config, id);
+  try {
+    await unlink(docPath(config, uuid));
+  } catch {
+    // File may not exist, that's fine
+  }
+  // Remove tag and UDA
+  await modifyTask(config, uuid, { has_doc: "" }, ["-doc"]);
+  return `Doc deleted for task ${uuid}.`;
 }
 
 export async function getUnique(config: TaskWarriorConfig, attribute: string): Promise<string[]> {

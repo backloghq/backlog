@@ -67,7 +67,10 @@ describe("MCP Server integration", () => {
     expect(names).toContain("task_denotate");
     expect(names).toContain("task_purge");
     expect(names).toContain("task_import");
-    expect(names).toHaveLength(15);
+    expect(names).toContain("task_doc_write");
+    expect(names).toContain("task_doc_read");
+    expect(names).toContain("task_doc_delete");
+    expect(names).toHaveLength(18);
   });
 
   it("defaults to pending tasks when filter is empty", async () => {
@@ -352,5 +355,57 @@ describe("MCP Server integration", () => {
     const result = await call(client, "task_info", { id: "1" });
     const task = parseContent(result) as Record<string, unknown>;
     expect(task.agent).toBe("reviewer");
+  });
+
+  it("writes and reads a task doc", async () => {
+    await call(client, "task_add", { description: "Spec me" });
+    await call(client, "task_doc_write", {
+      id: "1",
+      content: "# Spec\n\nDo the thing.\n",
+    });
+
+    const result = await call(client, "task_doc_read", { id: "1" });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toBe("# Spec\n\nDo the thing.\n");
+  });
+
+  it("auto-tags task when doc is written", async () => {
+    await call(client, "task_add", { description: "Auto-tag test" });
+    await call(client, "task_doc_write", { id: "1", content: "Doc content" });
+
+    const result = await call(client, "task_list", { filter: "+doc" });
+    const tasks = parseContent(result) as Array<Record<string, unknown>>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].has_doc).toBe("yes");
+  });
+
+  it("returns error when reading non-existent doc", async () => {
+    await call(client, "task_add", { description: "No doc" });
+    const result = await call(client, "task_doc_read", { id: "1" });
+    expect(result.isError).toBe(true);
+  });
+
+  it("deletes a doc and removes markers", async () => {
+    await call(client, "task_add", { description: "Delete doc" });
+    await call(client, "task_doc_write", { id: "1", content: "Temp doc" });
+    await call(client, "task_doc_delete", { id: "1" });
+
+    const readResult = await call(client, "task_doc_read", { id: "1" });
+    expect(readResult.isError).toBe(true);
+
+    const listResult = await call(client, "task_list", { filter: "+doc" });
+    const tasks = parseContent(listResult) as Array<unknown>;
+    expect(tasks).toHaveLength(0);
+  });
+
+  it("filters tasks with docs using has_doc UDA", async () => {
+    await call(client, "task_add", { description: "With doc" });
+    await call(client, "task_add", { description: "Without doc" });
+    await call(client, "task_doc_write", { id: "1", content: "Has doc" });
+
+    const result = await call(client, "task_list", { filter: "has_doc:yes" });
+    const tasks = parseContent(result) as Array<Record<string, unknown>>;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].description).toBe("With doc");
   });
 });
