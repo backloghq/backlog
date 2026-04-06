@@ -14,9 +14,8 @@
       {
         "hooks": [
           {
-            "type": "agent",
-            "prompt": "A task was just created in Claude's built-in task system. Here are the details:\n\n$ARGUMENTS\n\nSync this to the persistent backlog by calling task_add with:\n- description: use the task_subject field\n- agent: use the teammate_name field if present\n\nDo NOT add project or tags — just the description and agent. Keep it minimal. Call task_add once and confirm.",
-            "timeout": 30
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sync-task-created.sh"
           }
         ]
       }
@@ -25,9 +24,8 @@
       {
         "hooks": [
           {
-            "type": "agent",
-            "prompt": "A task was just completed in Claude's built-in task system. Here are the details:\n\n$ARGUMENTS\n\nFind the matching task in the persistent backlog by searching for the task_subject with task_list, then mark it done with task_done. If no matching task is found, skip silently.",
-            "timeout": 30
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sync-task-completed.sh"
           }
         ]
       }

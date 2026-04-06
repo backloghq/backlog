@@ -59,6 +59,52 @@ function getStore(): Store<Task> {
   return store;
 }
 
+async function drainSyncQueue(): Promise<void> {
+  const dir = getDataDir();
+  const queuePath = join(dir, "sync-queue.jsonl");
+  let content: string;
+  try {
+    content = await readFile(queuePath, "utf-8");
+  } catch {
+    return; // No queue file
+  }
+  const lines = content.trim().split("\n").filter(Boolean);
+  if (lines.length === 0) return;
+
+  const s = getStore();
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line) as Record<string, string>;
+      if (entry.subject) {
+        // TaskCreated sync
+        const uuid = randomUUID();
+        const timestamp = now();
+        const task: Task = {
+          uuid,
+          id: nextId(),
+          description: entry.subject,
+          status: "pending",
+          entry: timestamp,
+          modified: timestamp,
+        };
+        if (entry.agent) task.agent = entry.agent;
+        await s.set(uuid, task);
+      } else if (entry.completed) {
+        // TaskCompleted sync — find by description and mark done
+        const match = s.all().find(
+          (t) => t.status === "pending" && t.description === entry.completed,
+        );
+        if (match) {
+          await s.set(match.uuid, { ...match, status: "completed", end: now(), modified: now() });
+        }
+      }
+    } catch {
+      // Skip malformed entries
+    }
+  }
+  await unlink(queuePath);
+}
+
 function getDataDir(): string {
   if (!config) throw new Error("Engine not initialized.");
   return config.dataDir;
@@ -140,6 +186,7 @@ function computeUrgency(t: Task, allTasks: Task[]): number {
 // --- Public API ---
 
 export async function exportTasks(_config: EngineConfig, filter: string): Promise<Task[]> {
+  await drainSyncQueue();
   const s = getStore();
   const allTasks = s.all();
   allTasks.forEach((t) => { t.urgency = computeUrgency(t, allTasks); });

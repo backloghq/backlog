@@ -497,4 +497,53 @@ describe("Engine operations", () => {
       expect(tasks[0].project).toBe("test");
     });
   });
+
+  describe("sync queue", () => {
+    it("drains TaskCreated sync entries on next read", async () => {
+      // Simulate what the hook script writes
+      const { writeFile: wf } = await import("node:fs/promises");
+      await wf(
+        join(tmpDir, "sync-queue.jsonl"),
+        '{"subject":"Synced from TaskCreate"}\n{"subject":"Another synced task","agent":"planner"}\n',
+        "utf-8",
+      );
+
+      const tasks = await exportTasks(config, "status:pending");
+      expect(tasks).toHaveLength(2);
+      expect(tasks.find((t) => t.description === "Synced from TaskCreate")).toBeDefined();
+      const planned = tasks.find((t) => t.description === "Another synced task");
+      expect(planned?.agent).toBe("planner");
+    });
+
+    it("drains TaskCompleted sync entries on next read", async () => {
+      await addTask(config, "Will be completed externally", {});
+
+      const { writeFile: wf } = await import("node:fs/promises");
+      await wf(
+        join(tmpDir, "sync-queue.jsonl"),
+        '{"completed":"Will be completed externally"}\n',
+        "utf-8",
+      );
+
+      const pending = await exportTasks(config, "status:pending");
+      expect(pending).toHaveLength(0);
+      const completed = await exportTasks(config, "status:completed");
+      expect(completed).toHaveLength(1);
+    });
+
+    it("cleans up queue file after draining", async () => {
+      const { writeFile: wf, access: ac } = await import("node:fs/promises");
+      const queuePath = join(tmpDir, "sync-queue.jsonl");
+      await wf(queuePath, '{"subject":"Temp task"}\n', "utf-8");
+
+      await exportTasks(config, "");
+
+      await expect(ac(queuePath)).rejects.toThrow();
+    });
+
+    it("handles empty or missing queue file gracefully", async () => {
+      const tasks = await exportTasks(config, "status:pending");
+      expect(tasks).toHaveLength(0); // No crash, no tasks
+    });
+  });
 });
