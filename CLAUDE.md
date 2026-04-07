@@ -249,5 +249,6 @@ When making changes:
 1. Update `CHANGELOG.md` with a new version entry (Fixed/Added/Changed sections, [Keep a Changelog](https://keepachangelog.com) format)
 2. Bump version in **all three places**: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
 3. Run `npm run build && npm run lint && npm test`
-4. Commit, push, create PR
-5. After merge: push to main, the marketplace picks up the new version automatically
+4. **Commit `dist/` with your changes** — the plugin is distributed via committed JS files. CI will fail the PR if `dist/` is stale.
+5. Push, create PR
+6. After merge: push to main, the marketplace picks up the new version automatically
