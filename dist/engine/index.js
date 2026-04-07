@@ -6,7 +6,7 @@ import { Store } from "@backloghq/opslog";
 import { compileFilter } from "./filter.js";
 import { resolveDate, formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
-export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring", "waiting"];
+export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring"];
 export const VALID_PRIORITIES = ["H", "M", "L"];
 export function deriveProjectSlug(cwd) {
     const name = basename(cwd).replace(/[^a-zA-Z0-9_-]/g, "-");
@@ -86,9 +86,15 @@ async function drainSyncQueue() {
             }
             else if (entry.completed) {
                 // TaskCompleted sync — find by description and mark done
-                const match = s.all().find((t) => t.status === "pending" && t.description === entry.completed);
-                if (match) {
+                // Claude's TaskCompleted event only provides subject text, not UUID.
+                // Match by exact description; skip if ambiguous (multiple matches).
+                const matches = s.all().filter((t) => t.status === "pending" && t.description === entry.completed);
+                if (matches.length === 1) {
+                    const match = matches[0];
                     await s.set(match.uuid, { ...match, status: "completed", end: now(), modified: now() });
+                }
+                else if (matches.length > 1) {
+                    console.error(`backlog: sync completion skipped — ${matches.length} pending tasks match "${entry.completed}"`);
                 }
             }
             else if (entry.subagent_start) {
@@ -164,7 +170,7 @@ function validateAttrs(attrs) {
         }
     }
     if (attrs.depends) {
-        for (const dep of attrs.depends.split(",").map((d) => d.trim())) {
+        for (const dep of attrs.depends.split(",").map((d) => d.trim()).filter(Boolean)) {
             if (!UUID_RE.test(dep))
                 throw new Error(`Invalid dependency UUID: '${dep}'`);
         }
@@ -315,7 +321,7 @@ export async function addTask(_config, description, attrs, extraArgs = []) {
         ...(attrs.scheduled && { scheduled: formatDate(resolveDate(attrs.scheduled)) }),
         ...(attrs.recur && { recur: attrs.recur }),
         ...(attrs.until && { until: formatDate(resolveDate(attrs.until)) }),
-        ...(attrs.depends && { depends: attrs.depends.split(",").map((d) => d.trim()) }),
+        ...(attrs.depends && { depends: attrs.depends.split(",").map((d) => d.trim()).filter(Boolean) }),
         ...(attrs.agent && { agent: attrs.agent }),
     };
     await s.set(uuid, task);
@@ -346,7 +352,7 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
         if (attrs.due !== undefined)
             updated.due = attrs.due ? formatDate(resolveDate(attrs.due)) : undefined;
         if (attrs.depends !== undefined)
-            updated.depends = attrs.depends ? attrs.depends.split(",").map((d) => d.trim()) : undefined;
+            updated.depends = attrs.depends ? attrs.depends.split(",").map((d) => d.trim()).filter(Boolean) : undefined;
         if (attrs.wait !== undefined)
             updated.wait = attrs.wait ? formatDate(resolveDate(attrs.wait)) : undefined;
         if (attrs.scheduled !== undefined)
@@ -376,8 +382,11 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
                     updated.tags.push(arg.substring(1));
             }
             else if (arg.startsWith("-")) {
-                if (updated.tags)
+                if (updated.tags) {
                     updated.tags = updated.tags.filter((t) => t !== arg.substring(1));
+                    if (updated.tags.length === 0)
+                        updated.tags = undefined;
+                }
             }
         }
         await s.set(task.uuid, updated);
@@ -441,6 +450,11 @@ export async function countTasks(_config, filter) {
     return tasks.length;
 }
 export async function logTask(_config, description, attrs, extraArgs = []) {
+    if (!description || description.trim().length === 0)
+        throw new Error("Description cannot be empty.");
+    if (description.length > 500)
+        throw new Error("Description must be under 500 characters.");
+    validateAttrs(attrs);
     const s = getStore();
     const uuid = randomUUID();
     const timestamp = now();
@@ -466,6 +480,7 @@ export async function logTask(_config, description, attrs, extraArgs = []) {
     return "Task logged.";
 }
 export async function duplicateTask(_config, id, attrs, extraArgs = []) {
+    validateAttrs(attrs);
     const task = findTask(id);
     if (!task)
         return `No task found matching '${id}'.`;
@@ -499,8 +514,11 @@ export async function duplicateTask(_config, id, attrs, extraArgs = []) {
                 newTask.tags.push(arg.substring(1));
         }
         else if (arg.startsWith("-")) {
-            if (newTask.tags)
+            if (newTask.tags) {
                 newTask.tags = newTask.tags.filter((t) => t !== arg.substring(1));
+                if (newTask.tags.length === 0)
+                    newTask.tags = undefined;
+            }
         }
     }
     const s = getStore();
@@ -519,16 +537,19 @@ export async function importTasks(_config, tasksJson) {
             if (!VALID_STATUSES.includes(rawStatus)) {
                 throw new Error(`Invalid status '${rawStatus}' in imported task. Must be one of: ${VALID_STATUSES.join(", ")}`);
             }
+            const desc = raw.description;
+            if (!desc || desc.trim().length === 0)
+                throw new Error("Imported task description cannot be empty.");
+            if (desc.length > 500)
+                throw new Error(`Imported task description exceeds 500 characters: "${desc.slice(0, 50)}..."`);
             const task = {
                 uuid,
                 id: nextId(),
-                description: raw.description,
+                description: desc,
                 status: rawStatus,
                 entry: raw.entry || timestamp,
                 modified: timestamp,
             };
-            if (raw.project)
-                task.project = raw.project;
             if (raw.tags)
                 task.tags = raw.tags;
             if (raw.priority) {
@@ -538,8 +559,54 @@ export async function importTasks(_config, tasksJson) {
                 }
                 task.priority = rawPriority;
             }
-            if (raw.due)
-                task.due = raw.due;
+            if (raw.due) {
+                try {
+                    task.due = formatDate(resolveDate(raw.due));
+                }
+                catch {
+                    throw new Error(`Invalid due date '${raw.due}' in imported task.`);
+                }
+            }
+            if (raw.scheduled) {
+                try {
+                    task.scheduled = formatDate(resolveDate(raw.scheduled));
+                }
+                catch {
+                    throw new Error(`Invalid scheduled date '${raw.scheduled}' in imported task.`);
+                }
+            }
+            if (raw.wait) {
+                try {
+                    task.wait = formatDate(resolveDate(raw.wait));
+                }
+                catch {
+                    throw new Error(`Invalid wait date '${raw.wait}' in imported task.`);
+                }
+            }
+            if (raw.until) {
+                try {
+                    task.until = formatDate(resolveDate(raw.until));
+                }
+                catch {
+                    throw new Error(`Invalid until date '${raw.until}' in imported task.`);
+                }
+            }
+            if (raw.project) {
+                if (!PROJECT_RE.test(raw.project))
+                    throw new Error(`Invalid project name '${raw.project}' in imported task.`);
+                task.project = raw.project;
+            }
+            if (raw.depends) {
+                const deps = raw.depends.map((d) => d.trim()).filter(Boolean);
+                for (const dep of deps) {
+                    if (!UUID_RE.test(dep))
+                        throw new Error(`Invalid dependency UUID '${dep}' in imported task.`);
+                }
+                if (deps.length > 0)
+                    task.depends = deps;
+            }
+            if (raw.recur)
+                task.recur = raw.recur;
             if (raw.agent)
                 task.agent = raw.agent;
             s.set(uuid, task);

@@ -2,8 +2,7 @@ export interface Task {
   uuid: string;
   id: number;
   description: string;
-  /** Task status. "waiting" is typically virtual — derived from pending tasks with a future `wait` date. */
-  status: "pending" | "completed" | "deleted" | "recurring" | "waiting";
+  status: "pending" | "completed" | "deleted" | "recurring";
   entry: string;
   modified: string;
   end?: string;
