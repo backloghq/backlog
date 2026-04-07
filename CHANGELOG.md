@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.0 (2026-04-07)
+
+### Fixed
+- **Empty tag arrays** — removing the last tag now clears to `undefined` instead of leaving `[]`
+- **Sync queue ambiguity** — task completion matching skips if multiple pending tasks share the same description, logs warning instead of completing wrong task
+- **Import validation** — `importTasks` now validates dates, project names, description length, and handles `depends`/`recur` fields with UUID validation
+- **logTask validation** — description validated for non-empty and max 500 chars
+- **duplicateTask validation** — now calls `validateAttrs()` for project/date/priority checks
+- **Empty dependency strings** — `.filter(Boolean)` added at all dependency split sites
+- **Recurrence clarity** — removed redundant `current` assignment, simplified fill-forward logic
+
+### Removed
+- **`waiting` status** — removed from `VALID_STATUSES`, `Task` type union, and filter; waiting is now purely virtual (derived from `wait` date on pending tasks)
+
+### Changed
+- Upgraded `@backloghq/opslog` from 0.1.3 to 0.1.4 (op semantics, Infinity/NaN, archive lookup)
+
 ## 1.3.0 (2026-04-07)
 
 ### Fixed

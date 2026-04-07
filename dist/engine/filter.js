@@ -170,7 +170,7 @@ function virtualTagCheck(name, taskGetter) {
         case "PENDING": return (t) => t.status === "pending";
         case "COMPLETED": return (t) => t.status === "completed";
         case "DELETED": return (t) => t.status === "deleted";
-        case "WAITING": return (t) => t.status === "waiting" || (t.status === "pending" && !!t.wait && new Date(t.wait) > new Date());
+        case "WAITING": return (t) => t.status === "pending" && !!t.wait && new Date(t.wait) > new Date();
         case "RECURRING": return (t) => t.status === "recurring";
         case "ACTIVE": return (t) => !!t.start;
         case "BLOCKED": return (t) => blockedCheck(t, taskGetter);

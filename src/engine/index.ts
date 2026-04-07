@@ -8,7 +8,7 @@ import { compileFilter } from "./filter.js";
 import { resolveDate, formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
 
-export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring", "waiting"] as const;
+export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring"] as const;
 export const VALID_PRIORITIES = ["H", "M", "L"] as const;
 
 export interface EngineConfig {
@@ -97,11 +97,16 @@ async function drainSyncQueue(): Promise<void> {
         await s.set(uuid, task);
       } else if (entry.completed) {
         // TaskCompleted sync — find by description and mark done
-        const match = s.all().find(
+        // Claude's TaskCompleted event only provides subject text, not UUID.
+        // Match by exact description; skip if ambiguous (multiple matches).
+        const matches = s.all().filter(
           (t) => t.status === "pending" && t.description === entry.completed,
         );
-        if (match) {
+        if (matches.length === 1) {
+          const match = matches[0];
           await s.set(match.uuid, { ...match, status: "completed", end: now(), modified: now() });
+        } else if (matches.length > 1) {
+          console.error(`backlog: sync completion skipped — ${matches.length} pending tasks match "${entry.completed}"`);
         }
       } else if (entry.subagent_start) {
         // SubagentStart sync — assign unassigned pending tasks to the agent
@@ -158,7 +163,7 @@ function validateAttrs(attrs: TaskAttrs): void {
     try { resolveDate(attrs.until as string); } catch { throw new Error(`Invalid until date: "${attrs.until}".`); }
   }
   if (attrs.depends) {
-    for (const dep of (attrs.depends as string).split(",").map((d) => d.trim())) {
+    for (const dep of (attrs.depends as string).split(",").map((d) => d.trim()).filter(Boolean)) {
       if (!UUID_RE.test(dep)) throw new Error(`Invalid dependency UUID: '${dep}'`);
     }
   }
@@ -326,7 +331,7 @@ export async function addTask(
     ...(attrs.scheduled && { scheduled: formatDate(resolveDate(attrs.scheduled as string)) }),
     ...(attrs.recur && { recur: attrs.recur as string }),
     ...(attrs.until && { until: formatDate(resolveDate(attrs.until as string)) }),
-    ...(attrs.depends && { depends: (attrs.depends as string).split(",").map((d) => d.trim()) }),
+    ...(attrs.depends && { depends: (attrs.depends as string).split(",").map((d) => d.trim()).filter(Boolean) }),
     ...(attrs.agent && { agent: attrs.agent as string }),
   };
 
@@ -362,7 +367,7 @@ export async function modifyTask(
       updated.priority = (attrs.priority as "H" | "M" | "L") || undefined;
     }
     if (attrs.due !== undefined) updated.due = attrs.due ? formatDate(resolveDate(attrs.due as string)) : undefined;
-    if (attrs.depends !== undefined) updated.depends = attrs.depends ? (attrs.depends as string).split(",").map((d) => d.trim()) : undefined;
+    if (attrs.depends !== undefined) updated.depends = attrs.depends ? (attrs.depends as string).split(",").map((d) => d.trim()).filter(Boolean) : undefined;
     if (attrs.wait !== undefined) updated.wait = attrs.wait ? formatDate(resolveDate(attrs.wait as string)) : undefined;
     if (attrs.scheduled !== undefined) updated.scheduled = attrs.scheduled ? formatDate(resolveDate(attrs.scheduled as string)) : undefined;
     if (attrs.recur !== undefined) updated.recur = (attrs.recur as string) || undefined;
@@ -382,7 +387,10 @@ export async function modifyTask(
         if (!updated.tags) updated.tags = [];
         if (!updated.tags.includes(arg.substring(1))) updated.tags.push(arg.substring(1));
       } else if (arg.startsWith("-")) {
-        if (updated.tags) updated.tags = updated.tags.filter((t) => t !== arg.substring(1));
+        if (updated.tags) {
+          updated.tags = updated.tags.filter((t) => t !== arg.substring(1));
+          if (updated.tags.length === 0) updated.tags = undefined;
+        }
       }
     }
 
@@ -460,6 +468,9 @@ export async function logTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  if (!description || description.trim().length === 0) throw new Error("Description cannot be empty.");
+  if (description.length > 500) throw new Error("Description must be under 500 characters.");
+  validateAttrs(attrs);
   const s = getStore();
   const uuid = randomUUID();
   const timestamp = now();
@@ -493,6 +504,7 @@ export async function duplicateTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  validateAttrs(attrs);
   const task = findTask(id);
   if (!task) return `No task found matching '${id}'.`;
 
@@ -520,7 +532,10 @@ export async function duplicateTask(
       if (!newTask.tags) newTask.tags = [];
       if (!newTask.tags.includes(arg.substring(1))) newTask.tags.push(arg.substring(1));
     } else if (arg.startsWith("-")) {
-      if (newTask.tags) newTask.tags = newTask.tags.filter((t) => t !== arg.substring(1));
+      if (newTask.tags) {
+        newTask.tags = newTask.tags.filter((t) => t !== arg.substring(1));
+        if (newTask.tags.length === 0) newTask.tags = undefined;
+      }
     }
   }
 
@@ -542,15 +557,17 @@ export async function importTasks(_config: EngineConfig, tasksJson: string): Pro
       if (!(VALID_STATUSES as readonly string[]).includes(rawStatus)) {
         throw new Error(`Invalid status '${rawStatus}' in imported task. Must be one of: ${VALID_STATUSES.join(", ")}`);
       }
+      const desc = raw.description as string;
+      if (!desc || desc.trim().length === 0) throw new Error("Imported task description cannot be empty.");
+      if (desc.length > 500) throw new Error(`Imported task description exceeds 500 characters: "${desc.slice(0, 50)}..."`);
       const task: Task = {
         uuid,
         id: nextId(),
-        description: raw.description as string,
+        description: desc,
         status: rawStatus as Task["status"],
         entry: (raw.entry as string) || timestamp,
         modified: timestamp,
       };
-      if (raw.project) task.project = raw.project as string;
       if (raw.tags) task.tags = raw.tags as string[];
       if (raw.priority) {
         const rawPriority = raw.priority as string;
@@ -559,7 +576,30 @@ export async function importTasks(_config: EngineConfig, tasksJson: string): Pro
         }
         task.priority = rawPriority as "H" | "M" | "L";
       }
-      if (raw.due) task.due = raw.due as string;
+      if (raw.due) {
+        try { task.due = formatDate(resolveDate(raw.due as string)); } catch { throw new Error(`Invalid due date '${raw.due}' in imported task.`); }
+      }
+      if (raw.scheduled) {
+        try { task.scheduled = formatDate(resolveDate(raw.scheduled as string)); } catch { throw new Error(`Invalid scheduled date '${raw.scheduled}' in imported task.`); }
+      }
+      if (raw.wait) {
+        try { task.wait = formatDate(resolveDate(raw.wait as string)); } catch { throw new Error(`Invalid wait date '${raw.wait}' in imported task.`); }
+      }
+      if (raw.until) {
+        try { task.until = formatDate(resolveDate(raw.until as string)); } catch { throw new Error(`Invalid until date '${raw.until}' in imported task.`); }
+      }
+      if (raw.project) {
+        if (!PROJECT_RE.test(raw.project as string)) throw new Error(`Invalid project name '${raw.project}' in imported task.`);
+        task.project = raw.project as string;
+      }
+      if (raw.depends) {
+        const deps = (raw.depends as string[]).map((d: string) => d.trim()).filter(Boolean);
+        for (const dep of deps) {
+          if (!UUID_RE.test(dep)) throw new Error(`Invalid dependency UUID '${dep}' in imported task.`);
+        }
+        if (deps.length > 0) task.depends = deps;
+      }
+      if (raw.recur) task.recur = raw.recur as string;
       if (raw.agent) task.agent = raw.agent as string;
       s.set(uuid, task);
       count++;
