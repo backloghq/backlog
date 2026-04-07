@@ -337,8 +337,12 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
             updated.description = attrs.description;
         if (attrs.project !== undefined)
             updated.project = attrs.project || undefined;
-        if (attrs.priority !== undefined)
+        if (attrs.priority !== undefined) {
+            if (attrs.priority !== "" && !VALID_PRIORITIES.includes(attrs.priority)) {
+                throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
+            }
             updated.priority = attrs.priority || undefined;
+        }
         if (attrs.due !== undefined)
             updated.due = attrs.due ? formatDate(resolveDate(attrs.due)) : undefined;
         if (attrs.depends !== undefined)
@@ -362,11 +366,6 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
                 throw new Error(`Invalid status: '${attrs.status}'. Must be one of: ${VALID_STATUSES.join(", ")}`);
             }
             updated.status = attrs.status;
-        }
-        if (attrs.priority !== undefined && attrs.priority !== "") {
-            if (!VALID_PRIORITIES.includes(attrs.priority)) {
-                throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
-            }
         }
         // Handle tag args
         for (const arg of extraArgs) {
@@ -550,6 +549,7 @@ export async function importTasks(_config, tasksJson) {
     return `Imported ${count} task(s).`;
 }
 export async function getUnique(_config, attribute) {
+    await drainSyncQueue();
     const s = getStore();
     const values = new Set();
     for (const task of s.all()) {

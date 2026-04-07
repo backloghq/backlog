@@ -26,18 +26,14 @@ export function generateInstances(allTasks, nextIdFn, limit = 3) {
         // Generate instances to fill up to `limit` pending
         let count = pendingChildren.length;
         let current = latestDue ? addRecurrence(startDate, template.recur) : startDate;
-        // If no children yet, start from the template's due date
-        if (!latestDue) {
-            if (current <= new Date()) {
-                // Due is in the past — create one for now
-            }
-        }
-        else {
-            // Skip to next occurrence after latest child
+        // If children exist, skip to next occurrence after latest child.
+        // If no children, start from the template's due date (may be in the past —
+        // the loop will fill forward up to `limit` pending instances).
+        if (latestDue) {
             current = addRecurrence(new Date(latestDue), template.recur);
         }
         while (count < limit) {
-            if (untilDate && current > untilDate)
+            if (untilDate && current.toISOString().slice(0, 10) > untilDate.toISOString().slice(0, 10))
                 break;
             const instance = {
                 uuid: randomUUID(),

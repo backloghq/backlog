@@ -355,7 +355,12 @@ export async function modifyTask(
 
     if (attrs.description) updated.description = attrs.description as string;
     if (attrs.project !== undefined) updated.project = (attrs.project as string) || undefined;
-    if (attrs.priority !== undefined) updated.priority = (attrs.priority as "H" | "M" | "L") || undefined;
+    if (attrs.priority !== undefined) {
+      if (attrs.priority !== "" && !(VALID_PRIORITIES as readonly string[]).includes(attrs.priority as string)) {
+        throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
+      }
+      updated.priority = (attrs.priority as "H" | "M" | "L") || undefined;
+    }
     if (attrs.due !== undefined) updated.due = attrs.due ? formatDate(resolveDate(attrs.due as string)) : undefined;
     if (attrs.depends !== undefined) updated.depends = attrs.depends ? (attrs.depends as string).split(",").map((d) => d.trim()) : undefined;
     if (attrs.wait !== undefined) updated.wait = attrs.wait ? formatDate(resolveDate(attrs.wait as string)) : undefined;
@@ -371,12 +376,6 @@ export async function modifyTask(
       }
       updated.status = attrs.status as Task["status"];
     }
-    if (attrs.priority !== undefined && attrs.priority !== "") {
-      if (!(VALID_PRIORITIES as readonly string[]).includes(attrs.priority as string)) {
-        throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
-      }
-    }
-
     // Handle tag args
     for (const arg of extraArgs) {
       if (arg.startsWith("+")) {
@@ -571,6 +570,7 @@ export async function importTasks(_config: EngineConfig, tasksJson: string): Pro
 }
 
 export async function getUnique(_config: EngineConfig, attribute: string): Promise<string[]> {
+  await drainSyncQueue();
   const s = getStore();
   const values = new Set<string>();
 

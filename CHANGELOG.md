@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0 (2026-04-07)
+
+### Fixed
+- **Server version mismatch** — MCP server now reads version from package.json dynamically instead of hardcoding `"1.0.0"`
+- **Recurrence until timezone** — `until` date comparison now uses date-only strings, avoiding off-by-one errors near timezone boundaries
+- **Priority validation** — consolidated duplicate validation in `modifyTask`; now validates before assignment instead of after
+- **Recurrence dead code** — removed empty comment block in `recurrence.ts` that appeared unfinished; added clarifying comment for fill-forward behavior
+
+### Changed
+- `getUnique()` now calls `drainSyncQueue()` before reading, consistent with other read functions
+- Upgraded `@backloghq/opslog` from 0.1.2 to 0.1.3 (snapshot validation, missing snapshot error handling, version range checks)
+
 ## 1.2.0 (2026-04-07)
 
 ### Fixed

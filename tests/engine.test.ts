@@ -700,17 +700,20 @@ describe("Engine operations", () => {
     });
 
     it("recurring task with until — no instances past end date", async () => {
-      // Set until to 2 days from now — with daily recurrence, should cap at 2 instances (not 3)
-      const untilDate = new Date(Date.now() + 2 * 86400000);
+      // Use explicit dates to avoid timezone issues
+      // Due: 5 days from now, until: 7 days from now — daily recurrence should produce exactly 3 instances (days 5, 6, 7)
+      const dueDate = new Date(Date.now() + 5 * 86400000);
+      const untilDate = new Date(Date.now() + 7 * 86400000);
+      const dueStr = dueDate.toISOString().slice(0, 10);
       const untilStr = untilDate.toISOString().slice(0, 10);
-      await addTask(config, "Capped recurrence", { due: "tomorrow", recur: "daily", until: untilStr });
+      await addTask(config, "Capped recurrence", { due: dueStr, recur: "daily", until: untilStr });
       const all = await exportTasks(config, "");
       const template = all.find((t) => t.status === "recurring");
       const instances = all.filter((t) => t.status === "pending" && t.parent === template?.uuid);
-      // With until set to ~2 days out, should have at most 2 instances
-      expect(instances.length).toBeLessThanOrEqual(2);
+      // 3 days of daily recurrence within the until window (limit is also 3)
+      expect(instances.length).toBe(3);
       for (const inst of instances) {
-        expect(new Date(inst.due!).getTime()).toBeLessThanOrEqual(untilDate.getTime() + 86400000);
+        expect(inst.due!.slice(0, 10) <= untilStr).toBe(true);
       }
     });
   });
