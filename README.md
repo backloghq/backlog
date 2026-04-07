@@ -1,5 +1,10 @@
 # backlog
 
+[![GitHub stars](https://img.shields.io/github/stars/backloghq/backlog?style=social)](https://github.com/backloghq/backlog)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/backloghq/backlog/actions/workflows/ci.yml/badge.svg)](https://github.com/backloghq/backlog/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-backloghq.io-blue)](https://backloghq.io)
+
 Persistent, cross-session task management for Claude Code. Tasks survive sessions so work started by one agent can be picked up by another.
 
 Zero external dependencies — pure TypeScript with event-sourced storage. Install and it works.
@@ -155,6 +160,14 @@ npm test               # run tests
 npm run test:coverage  # run tests with coverage
 npm run dev            # watch mode
 ```
+
+## Community
+
+- [GitHub Discussions](https://github.com/backloghq/backlog/discussions) — questions, ideas, show & tell
+- [Issue Tracker](https://github.com/backloghq/backlog/issues) — bug reports and feature requests
+- [Documentation](https://backloghq.io) — full docs, skills reference, filter syntax
+
+If backlog is useful to you, consider giving it a star — it helps others find the project.
 
 ## License
 
