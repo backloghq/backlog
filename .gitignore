@@ -2,3 +2,4 @@ node_modules/
 coverage/
 PLUGIN_PLAN.md
 DESIGN.md
+.claude/worktrees/
