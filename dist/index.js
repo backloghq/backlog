@@ -1,5 +1,8 @@
+import { createRequire } from "node:module";
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server";
 import * as z from "zod";
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require("../package.json");
 import { getConfig, ensureSetup, shutdown, exportTasks, addTask, modifyTask, taskCommand, undo, getUnique, importTasks, countTasks, logTask, duplicateTask, writeDoc, readDoc, deleteDoc, archiveTasks, loadArchivedTasks, listArchiveSegments, } from "./engine/index.js";
 function parseTags(tags) {
     if (!tags)
@@ -29,7 +32,7 @@ function safe(fn) {
 function createServer(config) {
     const server = new McpServer({
         name: "backlog",
-        version: "1.0.0",
+        version: PKG_VERSION,
     });
     server.registerTool("task_list", {
         title: "List Tasks",

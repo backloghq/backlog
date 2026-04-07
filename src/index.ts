@@ -1,5 +1,9 @@
+import { createRequire } from "node:module";
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server";
 import * as z from "zod";
+
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require("../package.json") as { version: string };
 import {
   getConfig,
   ensureSetup,
@@ -52,7 +56,7 @@ function safe<T>(fn: (args: T) => Promise<ToolResult>): (args: T) => Promise<Too
 function createServer(config: EngineConfig): McpServer {
   const server = new McpServer({
     name: "backlog",
-    version: "1.0.0",
+    version: PKG_VERSION,
   });
 
   server.registerTool(
