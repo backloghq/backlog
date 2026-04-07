@@ -27,5 +27,8 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check dist is up to date
+        run: git diff --exit-code dist/ || (echo "dist/ is stale — run 'npm run build' and commit the result" && exit 1)
+
       - name: Test
         run: npm test
