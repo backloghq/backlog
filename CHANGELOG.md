@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0 (2026-04-08)
+
+### Changed
+- **All 24 MCP tool descriptions rewritten** — each tool now documents behavior, return format, parameter syntax, edge cases, and when to use it vs alternatives
+- README tool table updated with concise descriptions matching the MCP schema
+
 ## 1.4.0 (2026-04-07)
 
 ### Fixed
