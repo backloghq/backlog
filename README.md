@@ -73,30 +73,30 @@ The `task-planner` agent can be auto-invoked by Claude when someone needs to pla
 
 | Tool | Description |
 |------|-------------|
-| `task_list` | Query tasks with filter syntax |
-| `task_count` | Count tasks matching a filter |
-| `task_add` | Create a task with description, project, tags, priority, due, scheduled, recur, agent |
-| `task_log` | Record an already-completed task |
-| `task_modify` | Update existing task(s) |
-| `task_duplicate` | Clone a task with optional modifications |
-| `task_done` | Mark task as completed |
-| `task_delete` | Delete a task |
-| `task_annotate` | Add a note to a task |
-| `task_denotate` | Remove a note from a task |
-| `task_start` | Mark task as actively being worked on |
-| `task_stop` | Stop working on a task |
-| `task_undo` | Undo the last change |
-| `task_info` | Get full details for a task |
-| `task_import` | Bulk import tasks from JSON |
-| `task_purge` | Permanently remove deleted tasks |
-| `task_doc_write` | Attach/update a markdown document to a task |
-| `task_doc_read` | Read the document attached to a task |
-| `task_doc_delete` | Remove a document from a task |
-| `task_archive` | Archive completed/deleted tasks older than N days |
-| `task_archive_list` | List available archive segments |
-| `task_archive_load` | Load archived tasks for inspection |
-| `task_projects` | List all project names |
-| `task_tags` | List all tags |
+| `task_list` | Query tasks with filter syntax. Returns JSON array with all fields. |
+| `task_count` | Count tasks matching a filter. Same syntax as task_list. |
+| `task_add` | Create a new pending task. Only description required; all other fields optional. |
+| `task_log` | Record already-completed work directly in completed status. |
+| `task_modify` | Partial-update one or more tasks matching a filter. Only provided fields change. |
+| `task_duplicate` | Copy an existing task with optional field overrides. |
+| `task_done` | Mark a task as completed with end timestamp. |
+| `task_delete` | Soft-delete a task. Restorable with task_undo. Use task_purge to permanently remove. |
+| `task_annotate` | Add a timestamped note. Use task_doc_write for longer content. |
+| `task_denotate` | Remove an annotation by exact text match. |
+| `task_start` | Mark a task as actively being worked on. Visible in +ACTIVE queries. |
+| `task_stop` | Stop working on a task. Returns it to pending status. |
+| `task_undo` | Undo the most recent operation. Can be called repeatedly. |
+| `task_info` | Get full JSON details for a single task by ID or UUID. |
+| `task_import` | Bulk-create tasks from a JSON array. Atomic batch operation. |
+| `task_purge` | Permanently remove a deleted task. Irreversible. |
+| `task_doc_write` | Attach/replace a markdown document on a task (specs, notes, context). |
+| `task_doc_read` | Read the markdown document attached to a task. |
+| `task_doc_delete` | Remove a task's document. Permanent. |
+| `task_archive` | Move old completed/deleted tasks to quarterly archive segments. |
+| `task_archive_list` | List available archive segments. |
+| `task_archive_load` | Load archived tasks for read-only inspection. |
+| `task_projects` | List project names with pending/recurring tasks. |
+| `task_tags` | List tags with pending/recurring tasks. |
 
 ## Filter Syntax
 
