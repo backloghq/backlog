@@ -502,6 +502,46 @@ describe("MCP Server integration", () => {
     expect(tasks).toHaveLength(0);
   });
 
+  it("archives old completed tasks", async () => {
+    await call(client, "task_add", { description: "Old task" });
+    await call(client, "task_done", { id: "1" });
+    // Archive with 0 days to include the just-completed task
+    const archiveResult = await call(client, "task_archive", { older_than_days: "0" });
+    const msg = (archiveResult.structuredContent as Record<string, unknown>).message as string;
+    expect(msg).toContain("1");
+
+    // Verify active set is empty
+    const listResult = await call(client, "task_list", { filter: "status:completed" });
+    const tasks = parseContent(listResult) as Array<unknown>;
+    expect(tasks).toHaveLength(0);
+  });
+
+  it("lists archive segments", async () => {
+    await call(client, "task_add", { description: "To archive" });
+    await call(client, "task_done", { id: "1" });
+    await call(client, "task_archive", { older_than_days: "0" });
+
+    const result = await call(client, "task_archive_list", {});
+    const segments = parseContent(result) as string[];
+    expect(segments.length).toBeGreaterThanOrEqual(1);
+    expect(segments[0]).toContain("archive");
+  });
+
+  it("loads archived tasks for inspection", async () => {
+    await call(client, "task_add", { description: "Archived item" });
+    await call(client, "task_done", { id: "1" });
+    await call(client, "task_archive", { older_than_days: "0" });
+
+    const segResult = await call(client, "task_archive_list", {});
+    const segments = parseContent(segResult) as string[];
+    const period = segments[0].replace("archive/archive-", "").replace(".json", "");
+
+    const loadResult = await call(client, "task_archive_load", { segment: period });
+    const tasks = parseContent(loadResult) as Array<Record<string, unknown>>;
+    expect(tasks.length).toBeGreaterThanOrEqual(1);
+    expect(tasks.find((t) => t.description === "Archived item")).toBeDefined();
+  });
+
   it("filters tasks with docs using has_doc UDA", async () => {
     await call(client, "task_add", { description: "With doc" });
     await call(client, "task_add", { description: "Without doc" });

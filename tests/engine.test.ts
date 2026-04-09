@@ -26,6 +26,7 @@ import {
   type EngineConfig,
 } from "../src/engine/index.js";
 import { resolveDate } from "../src/engine/dates.js";
+import { compileFilter } from "../src/engine/filter.js";
 describe("Engine config", () => {
   const origEnv = { ...process.env };
 
@@ -879,5 +880,318 @@ describe("resolveDate", () => {
     expect(resolveDate("tomorrow")).toBeDefined();
     expect(resolveDate("yesterday")).toBeDefined();
     expect(resolveDate("eow")).toBeDefined();
+  });
+
+  it("parses eom (end of month)", () => {
+    const d = resolveDate("eom");
+    const now = new Date();
+    expect(d.getMonth() === now.getMonth() || d.getMonth() === (now.getMonth() + 1) % 12).toBe(true);
+  });
+
+  it("parses day names", () => {
+    for (const day of ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]) {
+      const d = resolveDate(day);
+      expect(d).toBeDefined();
+      expect(d.getTime()).toBeGreaterThan(Date.now() - 86400000);
+    }
+  });
+
+  it("parses relative days (3d)", () => {
+    const d = resolveDate("3d");
+    const expected = Date.now() + 3 * 86400000;
+    expect(Math.abs(d.getTime() - expected)).toBeLessThan(5000);
+  });
+
+  it("parses relative weeks (2w)", () => {
+    const d = resolveDate("2w");
+    const expected = Date.now() + 14 * 86400000;
+    expect(Math.abs(d.getTime() - expected)).toBeLessThan(5000);
+  });
+
+  it("parses relative months (1m)", () => {
+    const d = resolveDate("1m");
+    const now = new Date();
+    const expected = new Date(now);
+    expected.setMonth(expected.getMonth() + 1);
+    expect(Math.abs(d.getTime() - expected.getTime())).toBeLessThan(86400000);
+  });
+
+  it("parses 'today'", () => {
+    const d = resolveDate("today");
+    const now = new Date();
+    expect(d.getDate()).toBe(now.getDate());
+  });
+
+  it("parses 'now'", () => {
+    const d = resolveDate("now");
+    expect(Math.abs(d.getTime() - Date.now())).toBeLessThan(5000);
+  });
+
+  it("parses compound eow-1d", () => {
+    const eow = resolveDate("eow");
+    const d = resolveDate("eow-1d");
+    expect(Math.abs(d.getTime() - (eow.getTime() - 86400000))).toBeLessThan(5000);
+  });
+
+  it("throws on total garbage", () => {
+    expect(() => resolveDate("not-a-date-xyz")).toThrow();
+  });
+});
+
+describe("Filter compilation", () => {
+  const makeTasks = () => [
+    { uuid: "a1", id: 1, description: "Fix auth bug", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", project: "backend", tags: ["bug", "urgent"], priority: "H" as const, due: new Date(Date.now() - 86400000).toISOString() },
+    { uuid: "b2", id: 2, description: "Write docs", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", project: "frontend", tags: ["docs"], priority: "M" as const, start: "2026-04-05T10:00:00Z" },
+    { uuid: "c3", id: 3, description: "Deploy to prod", status: "completed" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", end: "2026-04-05T00:00:00Z" },
+    { uuid: "d4", id: 4, description: "Blocked task", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", depends: ["b2"] },
+    { uuid: "e5", id: 5, description: "Waiting task", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", wait: new Date(Date.now() + 86400000 * 7).toISOString() },
+  ];
+
+  it("filters by project attribute", () => {
+    const pred = compileFilter("project:backend");
+    const tasks = makeTasks();
+    expect(tasks.filter(pred)).toHaveLength(1);
+    expect(tasks.filter(pred)[0].description).toBe("Fix auth bug");
+  });
+
+  it("filters by +tag", () => {
+    const pred = compileFilter("+bug");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("filters by -tag (missing tag)", () => {
+    const pred = compileFilter("-bug");
+    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("filters by priority", () => {
+    const pred = compileFilter("priority:H");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("filters by status", () => {
+    const pred = compileFilter("status:completed");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("filters by +ACTIVE virtual tag", () => {
+    const pred = compileFilter("+ACTIVE");
+    const active = makeTasks().filter(pred);
+    expect(active).toHaveLength(1);
+    expect(active[0].description).toBe("Write docs");
+  });
+
+  it("filters by +COMPLETED virtual tag", () => {
+    const pred = compileFilter("+COMPLETED");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("filters by +PENDING virtual tag", () => {
+    const pred = compileFilter("+PENDING");
+    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("filters by +TAGGED virtual tag", () => {
+    const pred = compileFilter("+TAGGED");
+    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("filters by +OVERDUE virtual tag", () => {
+    const pred = compileFilter("+OVERDUE");
+    const overdue = makeTasks().filter(pred);
+    expect(overdue).toHaveLength(1);
+    expect(overdue[0].description).toBe("Fix auth bug");
+  });
+
+  it("filters by +BLOCKED virtual tag with taskGetter", () => {
+    const tasks = makeTasks();
+    const getter = (uuid: string) => tasks.find((t) => t.uuid === uuid);
+    const pred = compileFilter("+BLOCKED", getter);
+    const blocked = tasks.filter(pred);
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0].description).toBe("Blocked task");
+  });
+
+  it("filters by +WAITING virtual tag", () => {
+    const pred = compileFilter("+WAITING");
+    const waiting = makeTasks().filter(pred);
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0].description).toBe("Waiting task");
+  });
+
+  it("filters by +PROJECT virtual tag", () => {
+    const pred = compileFilter("+PROJECT");
+    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("filters by +PRIORITY virtual tag", () => {
+    const pred = compileFilter("+PRIORITY");
+    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("filters by +DUE virtual tag", () => {
+    const pred = compileFilter("+DUE");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("filters by numeric ID", () => {
+    const pred = compileFilter("1");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("filters by description text search", () => {
+    const pred = compileFilter("auth");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("supports boolean OR", () => {
+    const pred = compileFilter("project:backend or project:frontend");
+    expect(makeTasks().filter(pred)).toHaveLength(2);
+  });
+
+  it("supports parenthesized groups", () => {
+    const pred = compileFilter("(project:backend or project:frontend) +bug");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("supports due.before modifier", () => {
+    const pred = compileFilter("due.before:tomorrow");
+    const tasks = makeTasks().filter(pred);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].description).toBe("Fix auth bug");
+  });
+
+  it("supports due.after modifier", () => {
+    const pred = compileFilter("due.after:2020-01-01");
+    expect(makeTasks().filter(pred)).toHaveLength(1);
+  });
+
+  it("returns empty for no matches", () => {
+    const pred = compileFilter("project:nonexistent");
+    expect(makeTasks().filter(pred)).toHaveLength(0);
+  });
+});
+
+describe("Recurrence patterns", () => {
+  let tmpDir: string;
+  let config: EngineConfig;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "backlog-recur-"));
+    config = { dataDir: tmpDir };
+    await ensureSetup(config);
+  });
+
+  afterEach(async () => {
+    await shutdown();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("generates weekly recurrence instances", async () => {
+    const dueStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await addTask(config, "Weekly standup", { due: dueStr, recur: "weekly" });
+    const all = await exportTasks(config, "");
+    const template = all.find((t) => t.status === "recurring");
+    expect(template).toBeDefined();
+    const instances = all.filter((t) => t.status === "pending" && t.parent === template?.uuid);
+    expect(instances.length).toBeGreaterThanOrEqual(1);
+    // Check that instances are 7 days apart
+    if (instances.length >= 2) {
+      const d1 = new Date(instances[0].due!).getTime();
+      const d2 = new Date(instances[1].due!).getTime();
+      expect(Math.abs(d2 - d1 - 7 * 86400000)).toBeLessThan(86400000);
+    }
+  });
+
+  it("generates monthly recurrence instances", async () => {
+    const dueStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await addTask(config, "Monthly review", { due: dueStr, recur: "monthly" });
+    const all = await exportTasks(config, "");
+    const instances = all.filter((t) => t.status === "pending");
+    expect(instances.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("generates biweekly recurrence instances", async () => {
+    const dueStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await addTask(config, "Biweekly sync", { due: dueStr, recur: "biweekly" });
+    const all = await exportTasks(config, "");
+    const instances = all.filter((t) => t.status === "pending");
+    expect(instances.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("generates numeric pattern recurrence (3d)", async () => {
+    const dueStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await addTask(config, "Every 3 days", { due: dueStr, recur: "3d" });
+    const all = await exportTasks(config, "");
+    const instances = all.filter((t) => t.status === "pending");
+    expect(instances.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("generates yearly recurrence instances", async () => {
+    const dueStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await addTask(config, "Annual review", { due: dueStr, recur: "yearly" });
+    const all = await exportTasks(config, "");
+    const instances = all.filter((t) => t.status === "pending");
+    expect(instances.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("generates quarterly recurrence instances", async () => {
+    const dueStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await addTask(config, "Quarterly OKR", { due: dueStr, recur: "quarterly" });
+    const all = await exportTasks(config, "");
+    const instances = all.filter((t) => t.status === "pending");
+    expect(instances.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("Archive operations", () => {
+  let tmpDir: string;
+  let config: EngineConfig;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "backlog-archive-"));
+    config = { dataDir: tmpDir };
+    await ensureSetup(config);
+  });
+
+  afterEach(async () => {
+    await shutdown();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("archives completed tasks and removes from active set", async () => {
+    await addTask(config, "Done task", {});
+    await taskCommand(config, "1", "done");
+    const result = await archiveTasks(config, 0);
+    expect(result).toContain("1");
+
+    const active = await exportTasks(config, "status:completed");
+    expect(active).toHaveLength(0);
+  });
+
+  it("lists archive segments after archiving", async () => {
+    await addTask(config, "Archive me", {});
+    await taskCommand(config, "1", "done");
+    await archiveTasks(config, 0);
+
+    const segments = listArchiveSegments();
+    expect(segments.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("loads archived tasks for inspection", async () => {
+    await addTask(config, "Inspect me", {});
+    await taskCommand(config, "1", "done");
+    await archiveTasks(config, 0);
+
+    const segments = listArchiveSegments();
+    const period = segments[0].replace("archive/archive-", "").replace(".json", "");
+    const archived = await loadArchivedTasks(config, period);
+    expect(archived.length).toBeGreaterThanOrEqual(1);
+    expect(archived.find((t) => t.description === "Inspect me")).toBeDefined();
+  });
+
+  it("returns empty string when nothing to archive", async () => {
+    const result = await archiveTasks(config, 0);
+    expect(result).toContain("No tasks to archive");
   });
 });
