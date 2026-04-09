@@ -20,7 +20,22 @@ function call(client: Client, name: string, args: Record<string, unknown> = {}) 
 }
 
 function parseContent(result: Awaited<ReturnType<Client["callTool"]>>): unknown {
+  // Tools with outputSchema return structuredContent
+  const sc = result.structuredContent as Record<string, unknown> | undefined;
+  if (sc) {
+    if ("tasks" in sc) return sc.tasks;
+    if ("items" in sc) return sc.items;
+    if ("count" in sc) return sc.count;
+    if ("message" in sc) return sc.message;
+    if ("content" in sc) return sc.content;
+    return sc;
+  }
   return JSON.parse((result.content as Array<{ text: string }>)[0].text);
+}
+
+function parseTask(result: Awaited<ReturnType<Client["callTool"]>>): Record<string, unknown> {
+  const tasks = parseContent(result) as Array<Record<string, unknown>>;
+  return tasks[0];
 }
 
 describe("MCP Server integration", () => {
@@ -180,7 +195,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_annotate", { id: "1", text: "Important context" });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     const annotations = task.annotations as Array<Record<string, unknown>>;
     expect(annotations).toHaveLength(1);
     expect(annotations[0].description).toBe("Important context");
@@ -191,13 +206,13 @@ describe("MCP Server integration", () => {
     await call(client, "task_start", { id: "1" });
 
     let result = await call(client, "task_info", { id: "1" });
-    let task = parseContent(result) as Record<string, unknown>;
+    let task = parseTask(result);
     expect(task.start).toBeTruthy();
 
     await call(client, "task_stop", { id: "1" });
 
     result = await call(client, "task_info", { id: "1" });
-    task = parseContent(result) as Record<string, unknown>;
+    task = parseTask(result);
     expect(task.start).toBeFalsy();
   });
 
@@ -255,7 +270,7 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.description).toBe("Info test");
     expect(task.project).toBe("myproj");
     expect(task.priority).toBe("M");
@@ -311,7 +326,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_denotate", { id: "1", text: "Remove me" });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     const annotations = task.annotations as Array<Record<string, unknown>>;
     expect(annotations).toHaveLength(1);
     expect(annotations[0].description).toBe("Keep me");
@@ -321,7 +336,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_add", { description: "Purge me" });
     // Get UUID before deleting (deleted tasks lose their numeric ID)
     const infoResult = await call(client, "task_info", { id: "1" });
-    const uuid = (parseContent(infoResult) as Record<string, unknown>).uuid as string;
+    const uuid = parseTask(infoResult).uuid as string;
 
     await call(client, "task_delete", { id: "1" });
     await call(client, "task_purge", { id: uuid });
@@ -351,7 +366,7 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.agent).toBe("explorer");
   });
 
@@ -370,7 +385,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_modify", { filter: "1", agent: "reviewer" });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.agent).toBe("reviewer");
   });
 
@@ -380,10 +395,10 @@ describe("MCP Server integration", () => {
     await call(client, "task_add", { description: "C", project: "special" });
 
     const allResult = await call(client, "task_count", { filter: "" });
-    expect((allResult.content as Array<{ text: string }>)[0].text).toBe("3");
+    expect((allResult.structuredContent as Record<string, unknown>).count).toBe(3);
 
     const filteredResult = await call(client, "task_count", { filter: "project:special" });
-    expect((filteredResult.content as Array<{ text: string }>)[0].text).toBe("1");
+    expect((filteredResult.structuredContent as Record<string, unknown>).count).toBe(1);
   });
 
   it("logs a completed task", async () => {
@@ -430,7 +445,7 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.scheduled).toBeDefined();
   });
 
@@ -454,8 +469,8 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_doc_read", { id: "1" });
-    const text = (result.content as Array<{ text: string }>)[0].text;
-    expect(text).toBe("# Spec\n\nDo the thing.\n");
+    const doc = (result.structuredContent as Record<string, unknown>).content;
+    expect(doc).toBe("# Spec\n\nDo the thing.\n");
   });
 
   it("auto-tags task when doc is written", async () => {

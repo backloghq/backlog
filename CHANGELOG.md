@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0 (2026-04-09)
+
+### Added
+- **MCP tool annotations** on all 24 tools — `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` declared for each tool so MCP clients can make informed decisions without parsing descriptions
+- **Error conditions** documented in every tool description — what errors are returned and when
+- **Return value documentation** for all mutation tools — exact success/failure messages
+- **Reversibility notes** — each mutating tool states whether it can be undone with task_undo
+- **Discovery workflows** — parameter descriptions link to prerequisite tools (e.g. "use task_info to see annotations before denotating")
+- **Archive cold storage** — explicitly documented that archived tasks are view-only with no restore operation
+- **Permissions/rate limits** — all tools note that no authentication is required, no rate limits apply, and all operations are local
+- **Output schemas** on all 24 tools — formal Zod response schemas with `structuredContent` returns for typed MCP responses
+
 ## 1.5.0 (2026-04-08)
 
 ### Changed
