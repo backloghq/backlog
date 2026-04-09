@@ -191,9 +191,13 @@ Tasks get a stable, monotonically incrementing numeric ID assigned at creation t
 
 ### Environment Variables
 
-- `TASKDATA` — explicit path to project-specific data directory. Takes precedence over `TASKDATA_ROOT`.
+- `TASKDATA` — explicit path to project-specific data directory. Takes precedence over `TASKDATA_ROOT`. When using S3 backend, this becomes the key prefix in the bucket.
 - `TASKDATA_ROOT` — root directory for auto-derived per-project data. Server creates `<root>/<project-slug>/` based on CWD.
 - One of `TASKDATA` or `TASKDATA_ROOT` is required. Server refuses to start without either.
+- `BACKLOG_BACKEND` — storage backend. Omit for filesystem (default), set to `s3` for Amazon S3.
+- `BACKLOG_S3_BUCKET` — S3 bucket name (required when `BACKLOG_BACKEND=s3`).
+- `BACKLOG_S3_REGION` — AWS region (optional if using default credentials).
+- S3 backend requires `@backloghq/opslog-s3` as an optional peer dependency. It is dynamically imported only when `BACKLOG_BACKEND=s3`.
 
 ## Development
 

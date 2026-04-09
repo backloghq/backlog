@@ -13,7 +13,7 @@ export function deriveProjectSlug(cwd) {
     const hash = createHash("md5").update(cwd).digest("hex").substring(0, 8);
     return `${name}-${hash}`;
 }
-export function getConfig() {
+export async function getConfig() {
     let dataDir = process.env.TASKDATA;
     if (!dataDir) {
         const root = process.env.TASKDATA_ROOT;
@@ -26,16 +26,39 @@ export function getConfig() {
                 "Set TASKDATA to a project-specific directory, or TASKDATA_ROOT to auto-derive from the working directory.");
         }
     }
-    return { dataDir };
+    const result = { dataDir };
+    if (process.env.BACKLOG_BACKEND === "s3") {
+        const bucket = process.env.BACKLOG_S3_BUCKET;
+        if (!bucket)
+            throw new Error("BACKLOG_S3_BUCKET is required when BACKLOG_BACKEND=s3");
+        const region = process.env.BACKLOG_S3_REGION;
+        // Dynamic import — @backloghq/opslog-s3 is an optional peer dependency
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const mod = await import("@backloghq/opslog-s3");
+            result.backend = new mod.S3Backend({
+                bucket,
+                prefix: dataDir,
+                ...(region && { region }),
+            });
+        }
+        catch {
+            throw new Error("BACKLOG_BACKEND=s3 requires @backloghq/opslog-s3. Install it: npm install @backloghq/opslog-s3");
+        }
+    }
+    return result;
 }
 let store = null;
 let config = null;
 export async function ensureSetup(cfg) {
     config = cfg;
-    await mkdir(cfg.dataDir, { recursive: true });
-    await mkdir(join(cfg.dataDir, "docs"), { recursive: true });
+    if (!cfg.backend) {
+        // Filesystem backend — create directories
+        await mkdir(cfg.dataDir, { recursive: true });
+        await mkdir(join(cfg.dataDir, "docs"), { recursive: true });
+    }
     store = new Store();
-    await store.open(cfg.dataDir, { checkpointThreshold: 50 });
+    await store.open(cfg.dataDir, { checkpointThreshold: 50, backend: cfg.backend });
 }
 export async function shutdown() {
     if (store) {

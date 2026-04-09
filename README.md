@@ -149,6 +149,38 @@ Each project gets its own task data automatically. When used as a plugin, task d
 |----------|-------------|
 | `TASKDATA` | Explicit path to task data directory (overrides auto-derivation) |
 | `TASKDATA_ROOT` | Root directory for auto-derived per-project task data |
+| `BACKLOG_BACKEND` | Storage backend: omit for filesystem (default), `s3` for Amazon S3 |
+| `BACKLOG_S3_BUCKET` | S3 bucket name (required when `BACKLOG_BACKEND=s3`) |
+| `BACKLOG_S3_REGION` | AWS region (optional if using default credentials) |
+
+### S3 Backend
+
+Store task data in S3 for team sharing or cloud persistence. Requires `@backloghq/opslog-s3`:
+
+```bash
+npm install @backloghq/opslog-s3
+```
+
+Configure via environment variables in `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "backlog": {
+      "command": "node",
+      "args": ["/path/to/backlog/dist/index.js"],
+      "env": {
+        "TASKDATA": "my-project/tasks",
+        "BACKLOG_BACKEND": "s3",
+        "BACKLOG_S3_BUCKET": "my-team-backlog",
+        "BACKLOG_S3_REGION": "us-east-1"
+      }
+    }
+  }
+}
+```
+
+When using S3, `TASKDATA` becomes the key prefix in the bucket instead of a filesystem path.
 
 ## Docker
 

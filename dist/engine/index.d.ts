@@ -1,11 +1,13 @@
+import type { StorageBackend } from "@backloghq/opslog";
 import type { Task } from "./types.js";
 export declare const VALID_STATUSES: readonly ["pending", "completed", "deleted", "recurring"];
 export declare const VALID_PRIORITIES: readonly ["H", "M", "L"];
 export interface EngineConfig {
     dataDir: string;
+    backend?: StorageBackend;
 }
 export declare function deriveProjectSlug(cwd: string): string;
-export declare function getConfig(): EngineConfig;
+export declare function getConfig(): Promise<EngineConfig>;
 export declare function ensureSetup(cfg: EngineConfig): Promise<void>;
 export declare function shutdown(): Promise<void>;
 type TaskAttrs = Record<string, string | boolean>;

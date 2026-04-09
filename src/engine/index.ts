@@ -3,6 +3,7 @@ import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
 import { Store } from "@backloghq/opslog";
+import type { StorageBackend } from "@backloghq/opslog";
 import type { Task } from "./types.js";
 import { compileFilter } from "./filter.js";
 import { resolveDate, formatDate } from "./dates.js";
@@ -13,6 +14,7 @@ export const VALID_PRIORITIES = ["H", "M", "L"] as const;
 
 export interface EngineConfig {
   dataDir: string;
+  backend?: StorageBackend;
 }
 
 export function deriveProjectSlug(cwd: string): string {
@@ -21,7 +23,7 @@ export function deriveProjectSlug(cwd: string): string {
   return `${name}-${hash}`;
 }
 
-export function getConfig(): EngineConfig {
+export async function getConfig(): Promise<EngineConfig> {
   let dataDir = process.env.TASKDATA;
 
   if (!dataDir) {
@@ -37,7 +39,29 @@ export function getConfig(): EngineConfig {
     }
   }
 
-  return { dataDir };
+  const result: EngineConfig = { dataDir };
+
+  if (process.env.BACKLOG_BACKEND === "s3") {
+    const bucket = process.env.BACKLOG_S3_BUCKET;
+    if (!bucket) throw new Error("BACKLOG_S3_BUCKET is required when BACKLOG_BACKEND=s3");
+    const region = process.env.BACKLOG_S3_REGION;
+    // Dynamic import — @backloghq/opslog-s3 is an optional peer dependency
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod = await (import("@backloghq/opslog-s3" as any) as Promise<any>);
+      result.backend = new mod.S3Backend({
+        bucket,
+        prefix: dataDir,
+        ...(region && { region }),
+      });
+    } catch {
+      throw new Error(
+        "BACKLOG_BACKEND=s3 requires @backloghq/opslog-s3. Install it: npm install @backloghq/opslog-s3",
+      );
+    }
+  }
+
+  return result;
 }
 
 let store: Store<Task> | null = null;
@@ -45,10 +69,13 @@ let config: EngineConfig | null = null;
 
 export async function ensureSetup(cfg: EngineConfig): Promise<void> {
   config = cfg;
-  await mkdir(cfg.dataDir, { recursive: true });
-  await mkdir(join(cfg.dataDir, "docs"), { recursive: true });
+  if (!cfg.backend) {
+    // Filesystem backend — create directories
+    await mkdir(cfg.dataDir, { recursive: true });
+    await mkdir(join(cfg.dataDir, "docs"), { recursive: true });
+  }
   store = new Store<Task>();
-  await store.open(cfg.dataDir, { checkpointThreshold: 50 });
+  await store.open(cfg.dataDir, { checkpointThreshold: 50, backend: cfg.backend });
 }
 
 export async function shutdown(): Promise<void> {

@@ -1,6 +1,6 @@
 {
   "name": "backlog",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Persistent, cross-session task management for Claude Code. Tasks survive sessions so work started by one agent can be picked up by another.",
   "author": {
     "name": "BacklogHQ"
