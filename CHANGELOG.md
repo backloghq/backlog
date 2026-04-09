@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0 (2026-04-09)
+
+### Changed
+- Upgraded `@backloghq/opslog` from 0.1.4 to 0.2.0 — adds async mutation serializer (prevents concurrent write interleaving), advisory directory lock (prevents multi-process corruption), and O(1) ftruncate-based undo
+- `session-start.sh` now opens the store in read-only mode (`readOnly: true`) to avoid lock conflicts with the running MCP server
+
 ## 1.6.0 (2026-04-09)
 
 ### Added
