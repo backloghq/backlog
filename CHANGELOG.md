@@ -14,6 +14,9 @@
 
 ### Changed
 - **Refactored tool registrations** into domain-grouped modules: `tools/query.ts`, `tools/lifecycle.ts`, `tools/modify.ts`, `tools/docs.ts`, `tools/archive.ts`. Entry point reduced from 775 lines to 50. Shared helpers and schemas extracted to `helpers.ts` and `schemas.ts`.
+- **Dockerfile** upgraded to Node.js 25
+- **CI** added Docker build + MCP introspection verification job, bumped CI node to 22
+- **189 tests** — 51 new tests for archive tools, filter branches, date resolution, recurrence patterns, and schema validation
 
 ## 1.5.0 (2026-04-08)
 

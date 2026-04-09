@@ -150,13 +150,21 @@ Each project gets its own task data automatically. When used as a plugin, task d
 | `TASKDATA` | Explicit path to task data directory (overrides auto-derivation) |
 | `TASKDATA_ROOT` | Root directory for auto-derived per-project task data |
 
+## Docker
+
+```bash
+docker build -t backlog .
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' \
+  | docker run --rm -i backlog
+```
+
 ## Development
 
 ```bash
 npm install
 npm run build          # compile TypeScript
 npm run lint           # run ESLint
-npm test               # run tests
+npm test               # run tests (189 tests)
 npm run test:coverage  # run tests with coverage
 npm run dev            # watch mode
 ```
