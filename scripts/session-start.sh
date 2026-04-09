@@ -20,7 +20,7 @@ import { Store } from '@backloghq/opslog';
 const store = new Store();
 const dataDir = process.env.TASKDATA;
 try {
-  await store.open(dataDir);
+  await store.open(dataDir, { readOnly: true });
   const all = store.all();
   const pending = all.filter(t => t.status === 'pending');
   if (pending.length === 0) { await store.close(); process.exit(0); }
