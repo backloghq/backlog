@@ -92,6 +92,75 @@ describe("MCP Server integration", () => {
     expect(names).toHaveLength(24);
   });
 
+  it("all tools have titles, descriptions, and annotations", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      expect(tool.title, `${tool.name} missing title`).toBeTruthy();
+      expect(tool.description, `${tool.name} missing description`).toBeTruthy();
+      expect(tool.annotations, `${tool.name} missing annotations`).toBeDefined();
+      expect(tool.annotations).toHaveProperty("readOnlyHint");
+      expect(tool.annotations).toHaveProperty("destructiveHint");
+      expect(tool.annotations).toHaveProperty("idempotentHint");
+      expect(tool.annotations).toHaveProperty("openWorldHint");
+    }
+  });
+
+  it("all tools have input schemas with required fields", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      expect(tool.inputSchema, `${tool.name} missing inputSchema`).toBeDefined();
+      expect(tool.inputSchema.type).toBe("object");
+    }
+  });
+
+  it("read-only tools are annotated correctly", async () => {
+    const { tools } = await client.listTools();
+    const readOnlyTools = ["task_list", "task_info", "task_count", "task_projects", "task_tags", "task_doc_read", "task_archive_list", "task_archive_load"];
+    for (const name of readOnlyTools) {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool?.annotations?.readOnlyHint, `${name} should be readOnly`).toBe(true);
+      expect(tool?.annotations?.destructiveHint, `${name} should not be destructive`).toBe(false);
+    }
+  });
+
+  it("destructive tools are annotated correctly", async () => {
+    const { tools } = await client.listTools();
+    const destructiveTools = ["task_purge", "task_doc_delete"];
+    for (const name of destructiveTools) {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool?.annotations?.destructiveHint, `${name} should be destructive`).toBe(true);
+      expect(tool?.annotations?.readOnlyHint, `${name} should not be readOnly`).toBe(false);
+    }
+  });
+
+  it("no tools have openWorldHint set", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      expect(tool.annotations?.openWorldHint, `${tool.name} should not be openWorld`).toBe(false);
+    }
+  });
+
+  it("task_add has all expected parameters", async () => {
+    const { tools } = await client.listTools();
+    const taskAdd = tools.find((t) => t.name === "task_add");
+    const props = Object.keys(taskAdd!.inputSchema.properties as Record<string, unknown>);
+    expect(props).toContain("description");
+    expect(props).toContain("project");
+    expect(props).toContain("tags");
+    expect(props).toContain("priority");
+    expect(props).toContain("due");
+    expect(props).toContain("depends");
+    expect(props).toContain("recur");
+    expect(props).toContain("until");
+    expect(props).toContain("agent");
+  });
+
+  it("task_modify has filter as required parameter", async () => {
+    const { tools } = await client.listTools();
+    const taskModify = tools.find((t) => t.name === "task_modify");
+    expect(taskModify!.inputSchema.required).toContain("filter");
+  });
+
   it("defaults to pending tasks when filter is empty", async () => {
     await call(client, "task_add", { description: "Pending task" });
     await call(client, "task_add", { description: "Done task" });
