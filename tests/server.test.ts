@@ -20,7 +20,22 @@ function call(client: Client, name: string, args: Record<string, unknown> = {}) 
 }
 
 function parseContent(result: Awaited<ReturnType<Client["callTool"]>>): unknown {
+  // Tools with outputSchema return structuredContent
+  const sc = result.structuredContent as Record<string, unknown> | undefined;
+  if (sc) {
+    if ("tasks" in sc) return sc.tasks;
+    if ("items" in sc) return sc.items;
+    if ("count" in sc) return sc.count;
+    if ("message" in sc) return sc.message;
+    if ("content" in sc) return sc.content;
+    return sc;
+  }
   return JSON.parse((result.content as Array<{ text: string }>)[0].text);
+}
+
+function parseTask(result: Awaited<ReturnType<Client["callTool"]>>): Record<string, unknown> {
+  const tasks = parseContent(result) as Array<Record<string, unknown>>;
+  return tasks[0];
 }
 
 describe("MCP Server integration", () => {
@@ -75,6 +90,75 @@ describe("MCP Server integration", () => {
     expect(names).toContain("task_archive_list");
     expect(names).toContain("task_archive_load");
     expect(names).toHaveLength(24);
+  });
+
+  it("all tools have titles, descriptions, and annotations", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      expect(tool.title, `${tool.name} missing title`).toBeTruthy();
+      expect(tool.description, `${tool.name} missing description`).toBeTruthy();
+      expect(tool.annotations, `${tool.name} missing annotations`).toBeDefined();
+      expect(tool.annotations).toHaveProperty("readOnlyHint");
+      expect(tool.annotations).toHaveProperty("destructiveHint");
+      expect(tool.annotations).toHaveProperty("idempotentHint");
+      expect(tool.annotations).toHaveProperty("openWorldHint");
+    }
+  });
+
+  it("all tools have input schemas with required fields", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      expect(tool.inputSchema, `${tool.name} missing inputSchema`).toBeDefined();
+      expect(tool.inputSchema.type).toBe("object");
+    }
+  });
+
+  it("read-only tools are annotated correctly", async () => {
+    const { tools } = await client.listTools();
+    const readOnlyTools = ["task_list", "task_info", "task_count", "task_projects", "task_tags", "task_doc_read", "task_archive_list", "task_archive_load"];
+    for (const name of readOnlyTools) {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool?.annotations?.readOnlyHint, `${name} should be readOnly`).toBe(true);
+      expect(tool?.annotations?.destructiveHint, `${name} should not be destructive`).toBe(false);
+    }
+  });
+
+  it("destructive tools are annotated correctly", async () => {
+    const { tools } = await client.listTools();
+    const destructiveTools = ["task_purge", "task_doc_delete"];
+    for (const name of destructiveTools) {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool?.annotations?.destructiveHint, `${name} should be destructive`).toBe(true);
+      expect(tool?.annotations?.readOnlyHint, `${name} should not be readOnly`).toBe(false);
+    }
+  });
+
+  it("no tools have openWorldHint set", async () => {
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      expect(tool.annotations?.openWorldHint, `${tool.name} should not be openWorld`).toBe(false);
+    }
+  });
+
+  it("task_add has all expected parameters", async () => {
+    const { tools } = await client.listTools();
+    const taskAdd = tools.find((t) => t.name === "task_add");
+    const props = Object.keys(taskAdd!.inputSchema.properties as Record<string, unknown>);
+    expect(props).toContain("description");
+    expect(props).toContain("project");
+    expect(props).toContain("tags");
+    expect(props).toContain("priority");
+    expect(props).toContain("due");
+    expect(props).toContain("depends");
+    expect(props).toContain("recur");
+    expect(props).toContain("until");
+    expect(props).toContain("agent");
+  });
+
+  it("task_modify has filter as required parameter", async () => {
+    const { tools } = await client.listTools();
+    const taskModify = tools.find((t) => t.name === "task_modify");
+    expect(taskModify!.inputSchema.required).toContain("filter");
   });
 
   it("defaults to pending tasks when filter is empty", async () => {
@@ -180,7 +264,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_annotate", { id: "1", text: "Important context" });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     const annotations = task.annotations as Array<Record<string, unknown>>;
     expect(annotations).toHaveLength(1);
     expect(annotations[0].description).toBe("Important context");
@@ -191,13 +275,13 @@ describe("MCP Server integration", () => {
     await call(client, "task_start", { id: "1" });
 
     let result = await call(client, "task_info", { id: "1" });
-    let task = parseContent(result) as Record<string, unknown>;
+    let task = parseTask(result);
     expect(task.start).toBeTruthy();
 
     await call(client, "task_stop", { id: "1" });
 
     result = await call(client, "task_info", { id: "1" });
-    task = parseContent(result) as Record<string, unknown>;
+    task = parseTask(result);
     expect(task.start).toBeFalsy();
   });
 
@@ -255,7 +339,7 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.description).toBe("Info test");
     expect(task.project).toBe("myproj");
     expect(task.priority).toBe("M");
@@ -311,7 +395,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_denotate", { id: "1", text: "Remove me" });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     const annotations = task.annotations as Array<Record<string, unknown>>;
     expect(annotations).toHaveLength(1);
     expect(annotations[0].description).toBe("Keep me");
@@ -321,7 +405,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_add", { description: "Purge me" });
     // Get UUID before deleting (deleted tasks lose their numeric ID)
     const infoResult = await call(client, "task_info", { id: "1" });
-    const uuid = (parseContent(infoResult) as Record<string, unknown>).uuid as string;
+    const uuid = parseTask(infoResult).uuid as string;
 
     await call(client, "task_delete", { id: "1" });
     await call(client, "task_purge", { id: uuid });
@@ -351,7 +435,7 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.agent).toBe("explorer");
   });
 
@@ -370,7 +454,7 @@ describe("MCP Server integration", () => {
     await call(client, "task_modify", { filter: "1", agent: "reviewer" });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.agent).toBe("reviewer");
   });
 
@@ -380,10 +464,10 @@ describe("MCP Server integration", () => {
     await call(client, "task_add", { description: "C", project: "special" });
 
     const allResult = await call(client, "task_count", { filter: "" });
-    expect((allResult.content as Array<{ text: string }>)[0].text).toBe("3");
+    expect((allResult.structuredContent as Record<string, unknown>).count).toBe(3);
 
     const filteredResult = await call(client, "task_count", { filter: "project:special" });
-    expect((filteredResult.content as Array<{ text: string }>)[0].text).toBe("1");
+    expect((filteredResult.structuredContent as Record<string, unknown>).count).toBe(1);
   });
 
   it("logs a completed task", async () => {
@@ -430,7 +514,7 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_info", { id: "1" });
-    const task = parseContent(result) as Record<string, unknown>;
+    const task = parseTask(result);
     expect(task.scheduled).toBeDefined();
   });
 
@@ -454,8 +538,8 @@ describe("MCP Server integration", () => {
     });
 
     const result = await call(client, "task_doc_read", { id: "1" });
-    const text = (result.content as Array<{ text: string }>)[0].text;
-    expect(text).toBe("# Spec\n\nDo the thing.\n");
+    const doc = (result.structuredContent as Record<string, unknown>).content;
+    expect(doc).toBe("# Spec\n\nDo the thing.\n");
   });
 
   it("auto-tags task when doc is written", async () => {
@@ -485,6 +569,46 @@ describe("MCP Server integration", () => {
     const listResult = await call(client, "task_list", { filter: "+doc" });
     const tasks = parseContent(listResult) as Array<unknown>;
     expect(tasks).toHaveLength(0);
+  });
+
+  it("archives old completed tasks", async () => {
+    await call(client, "task_add", { description: "Old task" });
+    await call(client, "task_done", { id: "1" });
+    // Archive with 0 days to include the just-completed task
+    const archiveResult = await call(client, "task_archive", { older_than_days: "0" });
+    const msg = (archiveResult.structuredContent as Record<string, unknown>).message as string;
+    expect(msg).toContain("1");
+
+    // Verify active set is empty
+    const listResult = await call(client, "task_list", { filter: "status:completed" });
+    const tasks = parseContent(listResult) as Array<unknown>;
+    expect(tasks).toHaveLength(0);
+  });
+
+  it("lists archive segments", async () => {
+    await call(client, "task_add", { description: "To archive" });
+    await call(client, "task_done", { id: "1" });
+    await call(client, "task_archive", { older_than_days: "0" });
+
+    const result = await call(client, "task_archive_list", {});
+    const segments = parseContent(result) as string[];
+    expect(segments.length).toBeGreaterThanOrEqual(1);
+    expect(segments[0]).toContain("archive");
+  });
+
+  it("loads archived tasks for inspection", async () => {
+    await call(client, "task_add", { description: "Archived item" });
+    await call(client, "task_done", { id: "1" });
+    await call(client, "task_archive", { older_than_days: "0" });
+
+    const segResult = await call(client, "task_archive_list", {});
+    const segments = parseContent(segResult) as string[];
+    const period = segments[0].replace("archive/archive-", "").replace(".json", "");
+
+    const loadResult = await call(client, "task_archive_load", { segment: period });
+    const tasks = parseContent(loadResult) as Array<Record<string, unknown>>;
+    expect(tasks.length).toBeGreaterThanOrEqual(1);
+    expect(tasks.find((t) => t.description === "Archived item")).toBeDefined();
   });
 
   it("filters tasks with docs using has_doc UDA", async () => {
