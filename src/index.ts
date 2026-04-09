@@ -19,7 +19,7 @@ function createServer(config: EngineConfig): McpServer {
 }
 
 async function main(): Promise<void> {
-  const config = getConfig();
+  const config = await getConfig();
   await ensureSetup(config);
   const server = createServer(config);
   const transport = new StdioServerTransport();

@@ -13,7 +13,7 @@ function createServer(config) {
     return server;
 }
 async function main() {
-    const config = getConfig();
+    const config = await getConfig();
     await ensureSetup(config);
     const server = createServer(config);
     const transport = new StdioServerTransport();

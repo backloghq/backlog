@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.0 (2026-04-09)
+
+### Added
+- **S3 storage backend** — set `BACKLOG_BACKEND=s3` with `BACKLOG_S3_BUCKET` and optional `BACKLOG_S3_REGION` to store task data in Amazon S3. Requires `@backloghq/opslog-s3` as an optional peer dependency (dynamically imported). Enables team sharing and cloud persistence.
+
+### Changed
+- Upgraded `@backloghq/opslog` from 0.2.0 to 0.4.0 — adds pluggable storage backends, multi-writer concurrency with Lamport clocks, WAL tailing for cross-process live updates, and automatic delta encoding for space-efficient updates.
+- `getConfig()` is now async (supports dynamic import of optional S3 backend)
+- `EngineConfig` extended with optional `backend` field
+
 ## 1.7.0 (2026-04-09)
 
 ### Changed

@@ -34,30 +34,47 @@ describe("Engine config", () => {
     process.env = { ...origEnv };
   });
 
-  it("throws when neither TASKDATA nor TASKDATA_ROOT is set", () => {
+  it("throws when neither TASKDATA nor TASKDATA_ROOT is set", async () => {
     delete process.env.TASKDATA;
     delete process.env.TASKDATA_ROOT;
-    expect(() => getConfig()).toThrow("TASKDATA or TASKDATA_ROOT");
+    await expect(getConfig()).rejects.toThrow("TASKDATA or TASKDATA_ROOT");
   });
 
-  it("returns config when TASKDATA is set", () => {
+  it("returns config when TASKDATA is set", async () => {
     process.env.TASKDATA = "/tmp/test-tasks";
     delete process.env.TASKDATA_ROOT;
-    const config = getConfig();
+    const config = await getConfig();
     expect(config.dataDir).toBe("/tmp/test-tasks");
   });
 
-  it("derives from TASKDATA_ROOT and CWD", () => {
+  it("derives from TASKDATA_ROOT and CWD", async () => {
     delete process.env.TASKDATA;
     process.env.TASKDATA_ROOT = "/tmp/projects";
-    const config = getConfig();
+    const config = await getConfig();
     expect(config.dataDir).toMatch(/^\/tmp\/projects\/.+-[a-f0-9]{8}$/);
   });
 
-  it("prefers TASKDATA over TASKDATA_ROOT", () => {
+  it("prefers TASKDATA over TASKDATA_ROOT", async () => {
     process.env.TASKDATA = "/tmp/explicit";
     process.env.TASKDATA_ROOT = "/tmp/projects";
-    expect(getConfig().dataDir).toBe("/tmp/explicit");
+    const config = await getConfig();
+    expect(config.dataDir).toBe("/tmp/explicit");
+  });
+
+  it("throws when BACKLOG_BACKEND=s3 but no bucket", async () => {
+    process.env.TASKDATA = "/tmp/test";
+    process.env.BACKLOG_BACKEND = "s3";
+    delete process.env.BACKLOG_S3_BUCKET;
+    await expect(getConfig()).rejects.toThrow("BACKLOG_S3_BUCKET is required");
+  });
+
+  it("throws when BACKLOG_BACKEND=s3 but opslog-s3 not installed", async () => {
+    process.env.TASKDATA = "/tmp/test";
+    process.env.BACKLOG_BACKEND = "s3";
+    process.env.BACKLOG_S3_BUCKET = "my-bucket";
+    process.env.BACKLOG_S3_REGION = "us-east-1";
+    // opslog-s3 is not installed in dev deps, so dynamic import will fail
+    await expect(getConfig()).rejects.toThrow("@backloghq/opslog-s3");
   });
 
   it("derives consistent slugs", () => {
