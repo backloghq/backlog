@@ -47,7 +47,16 @@ Claude Code / Agent Teams
 
 ```
 src/
-  index.ts              # Entry point: server init, tool registration, stdio transport
+  index.ts              # Entry point: server init, stdio transport
+  helpers.ts            # Shared utilities: parseTags(), safe() error wrapper
+  schemas.ts            # Output schemas and shared constants
+  tools/
+    index.ts            # Barrel: registerTools() calling all domain modules
+    query.ts            # task_list, task_info, task_count, task_projects, task_tags
+    lifecycle.ts        # task_add, task_done, task_delete, task_start, task_stop, task_log, task_duplicate
+    modify.ts           # task_modify, task_annotate, task_denotate, task_undo, task_purge, task_import
+    docs.ts             # task_doc_write, task_doc_read, task_doc_delete
+    archive.ts          # task_archive, task_archive_list, task_archive_load
   engine/
     index.ts            # Engine: opslog-backed store, all task operations
     filter.ts           # Filter compiler: parses filter expressions into predicates
