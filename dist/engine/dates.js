@@ -70,6 +70,14 @@ export function isDueToday(due) {
         d.getMonth() === now.getMonth() &&
         d.getDate() === now.getDate();
 }
+export function isDueTomorrow(due) {
+    const d = new Date(due);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return d.getFullYear() === tomorrow.getFullYear() &&
+        d.getMonth() === tomorrow.getMonth() &&
+        d.getDate() === tomorrow.getDate();
+}
 export function isDueThisWeek(due) {
     const d = new Date(due);
     const now = new Date();

@@ -1,10 +1,6 @@
-import type { Task } from "./types.js";
-type Predicate = (task: Task) => boolean;
-type TaskGetter = (uuid: string) => Task | undefined;
-export declare function compileFilter(filter: string, taskGetter?: TaskGetter): Predicate;
-declare module "./types.js" {
-    interface Task {
-        _blocking?: boolean;
-    }
-}
-export {};
+/**
+ * Compile a backlog filter string into an agentdb JSON filter object.
+ * Handles backlog-specific syntax (date resolution, numeric IDs, UUIDs)
+ * on top of agentdb's compact filter parser.
+ */
+export declare function compileFilter(filter: string): Record<string, unknown>;

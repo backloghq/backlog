@@ -2,6 +2,7 @@ export declare function resolveDate(input: string): Date;
 export declare function formatDate(date: Date): string;
 export declare function isOverdue(due: string): boolean;
 export declare function isDueToday(due: string): boolean;
+export declare function isDueTomorrow(due: string): boolean;
 export declare function isDueThisWeek(due: string): boolean;
 export declare function isDueThisMonth(due: string): boolean;
 export declare function isDueThisQuarter(due: string): boolean;

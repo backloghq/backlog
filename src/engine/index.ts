@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
-import { Store } from "@backloghq/opslog";
-import type { StorageBackend } from "@backloghq/opslog";
-import type { Task } from "./types.js";
+import { AgentDB } from "@backloghq/agentdb";
+import type { Collection } from "@backloghq/agentdb";
+import type { StorageBackend } from "@backloghq/agentdb";
+import type { Task, Annotation } from "./types.js";
 import { compileFilter } from "./filter.js";
-import { resolveDate, formatDate } from "./dates.js";
+import { formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
+import { taskSchema } from "./task-schema.js";
 
 export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring"] as const;
 export const VALID_PRIORITIES = ["H", "M", "L"] as const;
@@ -45,7 +47,6 @@ export async function getConfig(): Promise<EngineConfig> {
     const bucket = process.env.BACKLOG_S3_BUCKET;
     if (!bucket) throw new Error("BACKLOG_S3_BUCKET is required when BACKLOG_BACKEND=s3");
     const region = process.env.BACKLOG_S3_REGION;
-    // Dynamic import — @backloghq/opslog-s3 is an optional peer dependency
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mod = await (import("@backloghq/opslog-s3" as any) as Promise<any>);
@@ -64,91 +65,31 @@ export async function getConfig(): Promise<EngineConfig> {
   return result;
 }
 
-let store: Store<Task> | null = null;
+let db: AgentDB | null = null;
+let col: Collection | null = null;
 let config: EngineConfig | null = null;
 
 export async function ensureSetup(cfg: EngineConfig): Promise<void> {
   config = cfg;
-  if (!cfg.backend) {
-    // Filesystem backend — create directories
-    await mkdir(cfg.dataDir, { recursive: true });
-    await mkdir(join(cfg.dataDir, "docs"), { recursive: true });
-  }
-  store = new Store<Task>();
-  await store.open(cfg.dataDir, { checkpointThreshold: 50, backend: cfg.backend });
+  db = new AgentDB(cfg.dataDir, {
+    checkpointThreshold: 50,
+    backend: cfg.backend,
+  });
+  await db.init();
+  col = await db.collection(taskSchema);
 }
 
 export async function shutdown(): Promise<void> {
-  if (store) {
-    await store.close();
-    store = null;
+  if (db) {
+    await db.close();
+    db = null;
+    col = null;
   }
 }
 
-function getStore(): Store<Task> {
-  if (!store) throw new Error("Engine not initialized. Call ensureSetup() first.");
-  return store;
-}
-
-async function drainSyncQueue(): Promise<void> {
-  const dir = getDataDir();
-  const queuePath = join(dir, "sync-queue.jsonl");
-  let content: string;
-  try {
-    content = await readFile(queuePath, "utf-8");
-  } catch {
-    return; // No queue file
-  }
-  const lines = content.trim().split("\n").filter(Boolean);
-  if (lines.length === 0) return;
-
-  const s = getStore();
-  for (const line of lines) {
-    try {
-      const parsed = JSON.parse(line);
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
-      const entry = parsed as Record<string, string>;
-      if (entry.subject) {
-        // TaskCreated sync
-        const uuid = randomUUID();
-        const timestamp = now();
-        const task: Task = {
-          uuid,
-          id: nextId(),
-          description: entry.subject,
-          status: "pending",
-          entry: timestamp,
-          modified: timestamp,
-        };
-        if (entry.agent) task.agent = entry.agent;
-        await s.set(uuid, task);
-      } else if (entry.completed) {
-        // TaskCompleted sync — find by description and mark done
-        // Claude's TaskCompleted event only provides subject text, not UUID.
-        // Match by exact description; skip if ambiguous (multiple matches).
-        const matches = s.all().filter(
-          (t) => t.status === "pending" && t.description === entry.completed,
-        );
-        if (matches.length === 1) {
-          const match = matches[0];
-          await s.set(match.uuid, { ...match, status: "completed", end: now(), modified: now() });
-        } else if (matches.length > 1) {
-          console.error(`backlog: sync completion skipped — ${matches.length} pending tasks match "${entry.completed}"`);
-        }
-      } else if (entry.subagent_start) {
-        // SubagentStart sync — assign unassigned pending tasks to the agent
-        const agentName = entry.subagent_start;
-        for (const task of s.all()) {
-          if (task.status === "pending" && !task.agent) {
-            await s.set(task.uuid, { ...task, agent: agentName, modified: now() });
-          }
-        }
-      }
-    } catch {
-      // Skip malformed entries
-    }
-  }
-  await unlink(queuePath);
+function getCol(): Collection {
+  if (!col) throw new Error("Engine not initialized. Call ensureSetup() first.");
+  return col;
 }
 
 function getDataDir(): string {
@@ -160,268 +101,267 @@ function now(): string {
   return formatDate(new Date());
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PROJECT_RE = /^[a-zA-Z0-9_-]+$/;
+// UUID_RE used by filter.ts
 
-type TaskAttrs = Record<string, string | boolean>;
+// --- Sync Queue ---
 
-function validateAttrs(attrs: TaskAttrs): void {
-  if ("description" in attrs) {
-    const desc = attrs.description as string;
-    if (!desc || desc.trim().length === 0) throw new Error("Description cannot be empty.");
-    if (desc.length > 500) throw new Error("Description must be under 500 characters.");
+async function drainSyncQueue(): Promise<void> {
+  const dir = getDataDir();
+  const queuePath = join(dir, "sync-queue.jsonl");
+  let content: string;
+  try {
+    content = await readFile(queuePath, "utf-8");
+  } catch {
+    return;
   }
-  if (attrs.project && !PROJECT_RE.test(attrs.project as string)) {
-    throw new Error("Project name must contain only letters, numbers, hyphens, and underscores.");
-  }
-  if (attrs.priority && !["H", "M", "L", ""].includes(attrs.priority as string)) {
-    throw new Error("Priority must be H, M, or L.");
-  }
-  if (attrs.due) {
-    try { resolveDate(attrs.due as string); } catch { throw new Error(`Invalid due date: '${attrs.due}'`); }
-  }
-  if (attrs.scheduled) {
-    try { resolveDate(attrs.scheduled as string); } catch { throw new Error(`Invalid scheduled date: '${attrs.scheduled}'`); }
-  }
-  if (attrs.wait) {
-    try { resolveDate(attrs.wait as string); } catch { throw new Error(`Invalid wait date: '${attrs.wait}'`); }
-  }
-  if (attrs.until !== undefined && attrs.until !== "") {
-    try { resolveDate(attrs.until as string); } catch { throw new Error(`Invalid until date: "${attrs.until}".`); }
-  }
-  if (attrs.depends) {
-    for (const dep of (attrs.depends as string).split(",").map((d) => d.trim()).filter(Boolean)) {
-      if (!UUID_RE.test(dep)) throw new Error(`Invalid dependency UUID: '${dep}'`);
+  const lines = content.trim().split("\n").filter(Boolean);
+  if (lines.length === 0) return;
+
+  const c = getCol();
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) continue;
+      const entry = parsed as Record<string, string>;
+      if (entry.subject) {
+        await c.insert({
+          _id: randomUUID(),
+          description: entry.subject,
+          status: "pending",
+          ...(entry.agent && { agent: entry.agent }),
+        });
+      } else if (entry.completed) {
+        const matches = c.find({ filter: { status: "pending", description: entry.completed } });
+        if (matches.records.length === 1) {
+          const match = matches.records[0];
+          await c.update({ _id: match._id }, { $set: { status: "completed", end: now(), modified: now() } });
+        } else if (matches.records.length > 1) {
+          console.error(`backlog: sync completion skipped — ${matches.records.length} pending tasks match "${entry.completed}"`);
+        }
+      } else if (entry.subagent_start) {
+        const agentName = entry.subagent_start;
+        const unassigned = c.find({ filter: { status: "pending", agent: { $exists: false } } });
+        for (const task of unassigned.records) {
+          await c.update({ _id: task._id }, { $set: { agent: agentName, modified: now() } });
+        }
+      }
+    } catch {
+      // Skip malformed entries
     }
   }
+  await unlink(queuePath);
 }
 
-function nextId(): number {
-  const s = getStore();
-  let maxId = 0;
-  for (const task of s.all()) {
-    if (task.id > maxId) maxId = task.id;
-  }
-  return maxId + 1;
-}
+// --- Urgency ---
 
-/**
- * Build a reverse dependency index: maps each UUID to the list of
- * pending task UUIDs that depend on it. O(n) build, O(1) lookup.
- */
-function buildBlockingIndex(tasks: Task[]): Map<string, string[]> {
+function buildBlockingIndex(tasks: Record<string, unknown>[]): Map<string, string[]> {
   const index = new Map<string, string[]>();
   for (const task of tasks) {
     if (task.status !== "pending" || !task.depends) continue;
-    for (const depUuid of task.depends) {
+    for (const depUuid of task.depends as string[]) {
       let list = index.get(depUuid);
-      if (!list) {
-        list = [];
-        index.set(depUuid, list);
-      }
-      list.push(task.uuid);
+      if (!list) { list = []; index.set(depUuid, list); }
+      list.push(task._id as string);
     }
-  }
-  return index;
-}
-
-/**
- * Build a numeric ID index: maps task ID to UUID. O(n) build, O(1) lookup.
- */
-function buildIdIndex(tasks: Task[]): Map<number, string> {
-  const index = new Map<number, string>();
-  for (const task of tasks) {
-    index.set(task.id, task.uuid);
   }
   return index;
 }
 
 function computeUrgency(
-  t: Task,
-  tasksByUuid: Map<string, Task>,
+  t: Record<string, unknown>,
+  tasksByUuid: Map<string, Record<string, unknown>>,
   blockingIndex: Map<string, string[]>,
 ): number {
   let urgency = 0;
-
-  // Priority
   if (t.priority === "H") urgency += 6.0;
   else if (t.priority === "M") urgency += 3.9;
   else if (t.priority === "L") urgency += 1.8;
-
-  // Active
   if (t.start) urgency += 4.0;
-
-  // Project
   if (t.project) urgency += 1.0;
-
-  // Tags
-  if (t.tags && t.tags.length > 0) {
-    urgency += Math.min(t.tags.length, 3) / 3;
-  }
-
-  // Annotations
-  if (t.annotations && t.annotations.length > 0) {
-    urgency += Math.min(t.annotations.length, 3) * 0.3;
-  }
-
-  // Blocked (has unresolved deps)
-  if (t.depends && t.depends.length > 0) {
-    const blocked = t.depends.some((depUuid) => {
+  const tags = t.tags as string[] | undefined;
+  if (tags && tags.length > 0) urgency += Math.min(tags.length, 3) / 3;
+  const annotations = t.annotations as unknown[] | undefined;
+  if (annotations && annotations.length > 0) urgency += Math.min(annotations.length, 3) * 0.3;
+  const depends = t.depends as string[] | undefined;
+  if (depends && depends.length > 0) {
+    const blocked = depends.some((depUuid) => {
       const dep = tasksByUuid.get(depUuid);
       return dep && dep.status === "pending";
     });
     if (blocked) urgency -= 5.0;
   }
-
-  // Blocking (other tasks depend on this) — O(1) lookup via index
-  const dependents = blockingIndex.get(t.uuid);
-  if (dependents && dependents.length > 0) {
-    urgency += 8.0;
-    t._blocking = true;
-  }
-
-  // Due
+  const dependents = blockingIndex.get(t._id as string);
+  if (dependents && dependents.length > 0) urgency += 8.0;
   if (t.due) {
-    const dueDate = new Date(t.due);
+    const dueDate = new Date(t.due as string);
     const daysUntilDue = (dueDate.getTime() - Date.now()) / 86400000;
     if (daysUntilDue < -7) urgency += 12.0;
     else if (daysUntilDue < 0) urgency += 8.0 + (1 - daysUntilDue / -7) * 4.0;
     else if (daysUntilDue < 7) urgency += 4.0 * (1 - daysUntilDue / 7);
     else if (daysUntilDue < 14) urgency += 2.0 * (1 - (daysUntilDue - 7) / 7);
   }
-
-  // Age (capped at 365 days)
-  const ageMs = Date.now() - new Date(t.entry).getTime();
+  const ageMs = Date.now() - new Date(t.entry as string).getTime();
   const ageDays = Math.min(ageMs / 86400000, 365);
   urgency += (ageDays / 365) * 2.0;
-
   return Math.round(urgency * 10000) / 10000;
+}
+
+// --- Helpers ---
+
+function toTask(record: Record<string, unknown>): Task {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { _id, _version, ...rest } = record;
+  return { uuid: _id as string, ...rest } as unknown as Task;
+}
+
+function findTask(id: string): Record<string, unknown> | undefined {
+  const c = getCol();
+  // Try as UUID/_id
+  const byId = c.findOne(id);
+  if (byId) return byId;
+  // Try as numeric ID
+  const numId = parseInt(id, 10);
+  if (!isNaN(numId)) {
+    const result = c.find({ filter: { id: numId }, limit: 1 });
+    return result.records[0];
+  }
+  return undefined;
 }
 
 // --- Public API ---
 
 export async function exportTasks(_config: EngineConfig, filter: string): Promise<Task[]> {
   await drainSyncQueue();
-  const s = getStore();
+  const c = getCol();
 
-  // Generate recurring task instances with incrementing IDs
-  const allTasks = s.all();
-  let idCounter = nextId();
+  // Generate recurring task instances
+  const allRecords = c.findAll();
+  const allTasks = allRecords.map(toTask);
+  let idCounter = 0;
+  for (const t of allTasks) { if (t.id > idCounter) idCounter = t.id; }
+  idCounter++;
   const newInstances = generateInstances(allTasks, () => idCounter++);
   for (const instance of newInstances) {
-    await s.set(instance.uuid, instance);
+    await c.insert({ _id: instance.uuid, ...instance });
   }
 
-  const updatedTasks = s.all();
-  const tasksByUuid = new Map(updatedTasks.map((t) => [t.uuid, t]));
-  const blockingIndex = buildBlockingIndex(updatedTasks);
-  updatedTasks.forEach((t) => { t.urgency = computeUrgency(t, tasksByUuid, blockingIndex); });
+  // Re-read after instance generation
+  const updatedRecords = c.findAll();
+  const tasksByUuid = new Map(updatedRecords.map((r) => [r._id as string, r]));
+  const blockingIndex = buildBlockingIndex(updatedRecords);
 
-  // Strip internal fields before returning
-  updatedTasks.forEach((t) => { delete t._blocking; });
+  // Compute urgency on each record
+  for (const record of updatedRecords) {
+    record.urgency = computeUrgency(record, tasksByUuid, blockingIndex);
+  }
 
-  const predicate = compileFilter(filter, (uuid) => tasksByUuid.get(uuid));
-  return updatedTasks.filter(predicate);
+  // Apply filter
+  const filterObj = compileFilter(filter);
+  const filtered = Object.keys(filterObj).length === 0
+    ? updatedRecords
+    : c.find({ filter: filterObj, limit: 10000 }).records;
+
+  // Compute urgency on filtered results (if not already)
+  for (const record of filtered) {
+    if (record.urgency === undefined) {
+      record.urgency = computeUrgency(record, tasksByUuid, blockingIndex);
+    }
+  }
+
+  return filtered.map(toTask);
 }
 
 export async function addTask(
   _config: EngineConfig,
   description: string,
-  attrs: TaskAttrs,
+  attrs: Record<string, string | boolean>,
   extraArgs: string[] = [],
 ): Promise<string> {
-  if (!description || description.trim().length === 0) throw new Error("Description cannot be empty.");
-  if (description.length > 500) throw new Error("Description must be under 500 characters.");
-  validateAttrs(attrs);
-
-  const s = getStore();
+  const c = getCol();
   const uuid = randomUUID();
-  const timestamp = now();
 
   const tags: string[] = [];
   for (const arg of extraArgs) {
     if (arg.startsWith("+")) tags.push(arg.substring(1));
   }
 
-  const task: Task = {
-    uuid,
-    id: nextId(),
+  const record: Record<string, unknown> = {
+    _id: uuid,
     description,
     status: attrs.recur ? "recurring" : "pending",
-    entry: timestamp,
-    modified: timestamp,
-    ...(attrs.project && { project: attrs.project as string }),
+    ...(attrs.project && { project: attrs.project }),
     ...(tags.length > 0 && { tags }),
-    ...(attrs.priority && { priority: attrs.priority as "H" | "M" | "L" }),
-    ...(attrs.due && { due: formatDate(resolveDate(attrs.due as string)) }),
-    ...(attrs.wait && { wait: formatDate(resolveDate(attrs.wait as string)) }),
-    ...(attrs.scheduled && { scheduled: formatDate(resolveDate(attrs.scheduled as string)) }),
-    ...(attrs.recur && { recur: attrs.recur as string }),
-    ...(attrs.until && { until: formatDate(resolveDate(attrs.until as string)) }),
+    ...(attrs.priority && { priority: attrs.priority }),
+    ...(attrs.due && { due: attrs.due }),
+    ...(attrs.wait && { wait: attrs.wait }),
+    ...(attrs.scheduled && { scheduled: attrs.scheduled }),
+    ...(attrs.recur && { recur: attrs.recur }),
+    ...(attrs.until && { until: attrs.until }),
     ...(attrs.depends && { depends: (attrs.depends as string).split(",").map((d) => d.trim()).filter(Boolean) }),
-    ...(attrs.agent && { agent: attrs.agent as string }),
+    ...(attrs.agent && { agent: attrs.agent }),
   };
 
-  await s.set(uuid, task);
+  await c.insert(record);
   return `Created task ${uuid}.`;
 }
 
 export async function modifyTask(
   _config: EngineConfig,
   filter: string,
-  attrs: TaskAttrs,
+  attrs: Record<string, string | boolean>,
   extraArgs: string[] = [],
 ): Promise<string> {
-  validateAttrs(attrs);
-  const s = getStore();
-  const allTasks = s.all();
-  const tasksByUuid = new Map(allTasks.map((t) => [t.uuid, t]));
-  const predicate = compileFilter(filter, (uuid) => tasksByUuid.get(uuid));
-  const matches = allTasks.filter(predicate);
+  const c = getCol();
+  const filterObj = compileFilter(filter);
+  const matches = Object.keys(filterObj).length === 0
+    ? c.findAll()
+    : c.find({ filter: filterObj, limit: 10000 }).records;
 
   if (matches.length === 0) return "No matching tasks.";
 
   let modified = 0;
-  for (const task of matches) {
-    const updated = { ...task, modified: now() };
+  for (const record of matches) {
+    const updates: Record<string, unknown> = { modified: now() };
 
-    if (attrs.description) updated.description = attrs.description as string;
-    if (attrs.project !== undefined) updated.project = (attrs.project as string) || undefined;
+    if (attrs.description) updates.description = attrs.description;
+    if (attrs.project !== undefined) updates.project = (attrs.project as string) || undefined;
     if (attrs.priority !== undefined) {
       if (attrs.priority !== "" && !(VALID_PRIORITIES as readonly string[]).includes(attrs.priority as string)) {
         throw new Error(`Invalid priority: '${attrs.priority}'. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
       }
-      updated.priority = (attrs.priority as "H" | "M" | "L") || undefined;
+      updates.priority = (attrs.priority as string) || undefined;
     }
-    if (attrs.due !== undefined) updated.due = attrs.due ? formatDate(resolveDate(attrs.due as string)) : undefined;
-    if (attrs.depends !== undefined) updated.depends = attrs.depends ? (attrs.depends as string).split(",").map((d) => d.trim()).filter(Boolean) : undefined;
-    if (attrs.wait !== undefined) updated.wait = attrs.wait ? formatDate(resolveDate(attrs.wait as string)) : undefined;
-    if (attrs.scheduled !== undefined) updated.scheduled = attrs.scheduled ? formatDate(resolveDate(attrs.scheduled as string)) : undefined;
-    if (attrs.recur !== undefined) updated.recur = (attrs.recur as string) || undefined;
-    if (attrs.until !== undefined) updated.until = attrs.until ? formatDate(resolveDate(attrs.until as string)) : undefined;
-    if (attrs.agent !== undefined) updated.agent = (attrs.agent as string) || undefined;
-    if (attrs.has_doc !== undefined) updated.has_doc = attrs.has_doc === true ? true : undefined;
-    if (attrs.end !== undefined) updated.end = (attrs.end as string) || undefined;
+    if (attrs.due !== undefined) updates.due = attrs.due || undefined;
+    if (attrs.depends !== undefined) updates.depends = attrs.depends ? (attrs.depends as string).split(",").map((d) => d.trim()).filter(Boolean) : undefined;
+    if (attrs.wait !== undefined) updates.wait = attrs.wait || undefined;
+    if (attrs.scheduled !== undefined) updates.scheduled = attrs.scheduled || undefined;
+    if (attrs.recur !== undefined) updates.recur = (attrs.recur as string) || undefined;
+    if (attrs.until !== undefined) updates.until = attrs.until || undefined;
+    if (attrs.agent !== undefined) updates.agent = (attrs.agent as string) || undefined;
+    if (attrs.has_doc !== undefined) updates.has_doc = attrs.has_doc === true ? true : undefined;
+    if (attrs.end !== undefined) updates.end = (attrs.end as string) || undefined;
     if (attrs.status !== undefined) {
       if (!(VALID_STATUSES as readonly string[]).includes(attrs.status as string)) {
         throw new Error(`Invalid status: '${attrs.status}'. Must be one of: ${VALID_STATUSES.join(", ")}`);
       }
-      updated.status = attrs.status as Task["status"];
-    }
-    // Handle tag args
-    for (const arg of extraArgs) {
-      if (arg.startsWith("+")) {
-        if (!updated.tags) updated.tags = [];
-        if (!updated.tags.includes(arg.substring(1))) updated.tags.push(arg.substring(1));
-      } else if (arg.startsWith("-")) {
-        if (updated.tags) {
-          updated.tags = updated.tags.filter((t) => t !== arg.substring(1));
-          if (updated.tags.length === 0) updated.tags = undefined;
-        }
-      }
+      updates.status = attrs.status;
     }
 
-    await s.set(task.uuid, updated);
+    // Handle tag args
+    let currentTags = (record.tags as string[] | undefined) ?? [];
+    let tagsChanged = false;
+    for (const arg of extraArgs) {
+      if (arg.startsWith("+")) {
+        if (!currentTags.includes(arg.substring(1))) { currentTags.push(arg.substring(1)); tagsChanged = true; }
+      } else if (arg.startsWith("-")) {
+        const before = currentTags.length;
+        currentTags = currentTags.filter((t) => t !== arg.substring(1));
+        if (currentTags.length !== before) tagsChanged = true;
+      }
+    }
+    if (tagsChanged) updates.tags = currentTags.length > 0 ? currentTags : undefined;
+
+    await c.update({ _id: record._id }, { $set: updates });
     modified++;
   }
   return `Modified ${modified} task(s).`;
@@ -433,54 +373,52 @@ export async function taskCommand(
   command: string,
   extraArgs: string[] = [],
 ): Promise<string> {
-  const s = getStore();
-  const task = findTask(id);
-  if (!task) return `No task found matching '${id}'.`;
+  const c = getCol();
+  const record = findTask(id);
+  if (!record) return `No task found matching '${id}'.`;
 
-  const updated = { ...task, modified: now() };
+  const taskId = record._id as string;
 
   switch (command) {
     case "done":
-      updated.status = "completed";
-      updated.end = now();
+      await c.update({ _id: taskId }, { $set: { status: "completed", end: now(), modified: now() } });
       break;
     case "delete":
-      updated.status = "deleted";
-      updated.end = now();
+      await c.update({ _id: taskId }, { $set: { status: "deleted", end: now(), modified: now() } });
       break;
     case "start":
-      updated.start = now();
+      await c.update({ _id: taskId }, { $set: { start: now(), modified: now() } });
       break;
     case "stop":
-      updated.start = undefined;
+      await c.update({ _id: taskId }, { $set: { start: undefined, modified: now() } });
       break;
-    case "annotate":
-      if (!updated.annotations) updated.annotations = [];
-      updated.annotations.push({ entry: now(), description: extraArgs.join(" ") });
+    case "annotate": {
+      const annotations = (record.annotations as Annotation[] | undefined) ?? [];
+      annotations.push({ entry: now(), description: extraArgs.join(" ") });
+      await c.update({ _id: taskId }, { $set: { annotations, modified: now() } });
       break;
+    }
     case "denotate": {
       const text = extraArgs.join(" ");
-      if (updated.annotations) {
-        updated.annotations = updated.annotations.filter((a) => a.description !== text);
-        if (updated.annotations.length === 0) updated.annotations = undefined;
-      }
+      let annotations = (record.annotations as Annotation[] | undefined) ?? [];
+      annotations = annotations.filter((a) => a.description !== text);
+      await c.update({ _id: taskId }, { $set: { annotations: annotations.length > 0 ? annotations : undefined, modified: now() } });
       break;
     }
     case "purge":
-      if (task.status !== "deleted") return "Can only purge deleted tasks.";
-      await s.delete(task.uuid);
-      return `Task ${task.uuid} purged.`;
+      if (record.status !== "deleted") return "Can only purge deleted tasks.";
+      await c.deleteById(taskId);
+      return `Task ${taskId} purged.`;
     default:
       return `Unknown command: ${command}`;
   }
 
-  await s.set(task.uuid, updated);
   return `Task ${command} completed.`;
 }
 
 export async function undo(): Promise<string> {
-  const s = getStore();
-  const undone = await s.undo();
+  const c = getCol();
+  const undone = await c.undo();
   return undone ? "Undo completed." : "Nothing to undo.";
 }
 
@@ -497,8 +435,8 @@ export async function logTask(
 ): Promise<string> {
   if (!description || description.trim().length === 0) throw new Error("Description cannot be empty.");
   if (description.length > 500) throw new Error("Description must be under 500 characters.");
-  validateAttrs(attrs);
-  const s = getStore();
+
+  const c = getCol();
   const uuid = randomUUID();
   const timestamp = now();
 
@@ -507,9 +445,8 @@ export async function logTask(
     if (arg.startsWith("+")) tags.push(arg.substring(1));
   }
 
-  const task: Task = {
-    uuid,
-    id: nextId(),
+  await c.insert({
+    _id: uuid,
     description,
     status: "completed",
     entry: timestamp,
@@ -517,11 +454,10 @@ export async function logTask(
     end: timestamp,
     ...(attrs.project && { project: attrs.project }),
     ...(tags.length > 0 && { tags }),
-    ...(attrs.priority && { priority: attrs.priority as "H" | "M" | "L" }),
+    ...(attrs.priority && { priority: attrs.priority }),
     ...(attrs.agent && { agent: attrs.agent }),
-  };
+  });
 
-  await s.set(uuid, task);
   return "Task logged.";
 }
 
@@ -531,16 +467,18 @@ export async function duplicateTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
-  validateAttrs(attrs);
-  const task = findTask(id);
-  if (!task) return `No task found matching '${id}'.`;
+  const record = findTask(id);
+  if (!record) return `No task found matching '${id}'.`;
 
+  const c = getCol();
   const uuid = randomUUID();
   const timestamp = now();
-  const newTask: Task = {
-    ...task,
-    uuid,
-    id: nextId(),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { _id, _version, id: _numId, ...fields } = record;
+
+  const newRecord: Record<string, unknown> = {
+    _id: uuid,
+    ...fields,
     entry: timestamp,
     modified: timestamp,
     start: undefined,
@@ -548,149 +486,113 @@ export async function duplicateTask(
     status: "pending",
   };
 
-  if (attrs.description) newTask.description = attrs.description;
-  if (attrs.project !== undefined) newTask.project = attrs.project || undefined;
-  if (attrs.priority !== undefined) newTask.priority = (attrs.priority as "H" | "M" | "L") || undefined;
-  if (attrs.due !== undefined) newTask.due = attrs.due ? formatDate(resolveDate(attrs.due)) : undefined;
-  if (attrs.agent !== undefined) newTask.agent = attrs.agent || undefined;
+  if (attrs.description) newRecord.description = attrs.description;
+  if (attrs.project !== undefined) newRecord.project = attrs.project || undefined;
+  if (attrs.priority !== undefined) newRecord.priority = (attrs.priority as string) || undefined;
+  if (attrs.due !== undefined) newRecord.due = attrs.due || undefined;
+  if (attrs.agent !== undefined) newRecord.agent = attrs.agent || undefined;
 
+  // Handle tag args
+  let tags = (newRecord.tags as string[] | undefined) ?? [];
   for (const arg of extraArgs) {
     if (arg.startsWith("+")) {
-      if (!newTask.tags) newTask.tags = [];
-      if (!newTask.tags.includes(arg.substring(1))) newTask.tags.push(arg.substring(1));
+      if (!tags.includes(arg.substring(1))) tags.push(arg.substring(1));
     } else if (arg.startsWith("-")) {
-      if (newTask.tags) {
-        newTask.tags = newTask.tags.filter((t) => t !== arg.substring(1));
-        if (newTask.tags.length === 0) newTask.tags = undefined;
-      }
+      tags = tags.filter((t) => t !== arg.substring(1));
     }
   }
+  newRecord.tags = tags.length > 0 ? tags : undefined;
 
-  const s = getStore();
-  await s.set(uuid, newTask);
+  await c.insert(newRecord);
   return `Task duplicated as ${uuid}.`;
 }
 
 export async function importTasks(_config: EngineConfig, tasksJson: string): Promise<string> {
-  const s = getStore();
+  const c = getCol();
   const tasks = JSON.parse(tasksJson) as Array<Record<string, unknown>>;
-  let count = 0;
 
-  await s.batch(() => {
-    for (const raw of tasks) {
-      const uuid = (raw.uuid as string) || randomUUID();
-      const timestamp = now();
-      const rawStatus = (raw.status as string) || "pending";
-      if (!(VALID_STATUSES as readonly string[]).includes(rawStatus)) {
-        throw new Error(`Invalid status '${rawStatus}' in imported task. Must be one of: ${VALID_STATUSES.join(", ")}`);
-      }
-      const desc = raw.description as string;
-      if (!desc || desc.trim().length === 0) throw new Error("Imported task description cannot be empty.");
-      if (desc.length > 500) throw new Error(`Imported task description exceeds 500 characters: "${desc.slice(0, 50)}..."`);
-      const task: Task = {
-        uuid,
-        id: nextId(),
-        description: desc,
-        status: rawStatus as Task["status"],
-        entry: (raw.entry as string) || timestamp,
-        modified: timestamp,
-      };
-      if (raw.tags) task.tags = raw.tags as string[];
-      if (raw.priority) {
-        const rawPriority = raw.priority as string;
-        if (!(VALID_PRIORITIES as readonly string[]).includes(rawPriority)) {
-          throw new Error(`Invalid priority '${rawPriority}' in imported task. Must be one of: ${VALID_PRIORITIES.join(", ")}`);
-        }
-        task.priority = rawPriority as "H" | "M" | "L";
-      }
-      if (raw.due) {
-        try { task.due = formatDate(resolveDate(raw.due as string)); } catch { throw new Error(`Invalid due date '${raw.due}' in imported task.`); }
-      }
-      if (raw.scheduled) {
-        try { task.scheduled = formatDate(resolveDate(raw.scheduled as string)); } catch { throw new Error(`Invalid scheduled date '${raw.scheduled}' in imported task.`); }
-      }
-      if (raw.wait) {
-        try { task.wait = formatDate(resolveDate(raw.wait as string)); } catch { throw new Error(`Invalid wait date '${raw.wait}' in imported task.`); }
-      }
-      if (raw.until) {
-        try { task.until = formatDate(resolveDate(raw.until as string)); } catch { throw new Error(`Invalid until date '${raw.until}' in imported task.`); }
-      }
-      if (raw.project) {
-        if (!PROJECT_RE.test(raw.project as string)) throw new Error(`Invalid project name '${raw.project}' in imported task.`);
-        task.project = raw.project as string;
-      }
-      if (raw.depends) {
-        const deps = (raw.depends as string[]).map((d: string) => d.trim()).filter(Boolean);
-        for (const dep of deps) {
-          if (!UUID_RE.test(dep)) throw new Error(`Invalid dependency UUID '${dep}' in imported task.`);
-        }
-        if (deps.length > 0) task.depends = deps;
-      }
-      if (raw.recur) task.recur = raw.recur as string;
-      if (raw.agent) task.agent = raw.agent as string;
-      s.set(uuid, task);
-      count++;
-    }
-  });
+  const docs: Array<Record<string, unknown>> = [];
+  for (const raw of tasks) {
+    const uuid = (raw.uuid as string) || randomUUID();
+    const desc = raw.description as string;
+    if (!desc || desc.trim().length === 0) throw new Error("Imported task description cannot be empty.");
+    if (desc.length > 500) throw new Error(`Imported task description exceeds 500 characters: "${desc.slice(0, 50)}..."`);
 
-  return `Imported ${count} task(s).`;
+    const doc: Record<string, unknown> = {
+      _id: uuid,
+      description: desc,
+      status: (raw.status as string) || "pending",
+      entry: (raw.entry as string) || now(),
+    };
+    if (raw.project) doc.project = raw.project;
+    if (raw.tags) doc.tags = raw.tags;
+    if (raw.priority) doc.priority = raw.priority;
+    if (raw.due) doc.due = raw.due;
+    if (raw.scheduled) doc.scheduled = raw.scheduled;
+    if (raw.wait) doc.wait = raw.wait;
+    if (raw.until) doc.until = raw.until;
+    if (raw.depends) doc.depends = raw.depends;
+    if (raw.recur) doc.recur = raw.recur;
+    if (raw.agent) doc.agent = raw.agent;
+    docs.push(doc);
+  }
+
+  await c.insertMany(docs);
+  return `Imported ${docs.length} task(s).`;
 }
 
 export async function getUnique(_config: EngineConfig, attribute: string): Promise<string[]> {
   await drainSyncQueue();
-  const s = getStore();
-  const values = new Set<string>();
-
-  for (const task of s.all()) {
-    if (task.status !== "pending" && task.status !== "recurring") continue;
-    if (attribute === "tags") {
-      task.tags?.forEach((t) => values.add(t));
-    } else if (attribute === "project" && task.project) {
-      values.add(task.project);
-    }
+  const c = getCol();
+  if (attribute === "tags" || attribute === "project") {
+    const result = c.distinct(attribute);
+    return result.values as string[];
   }
-
-  return [...values];
+  return [];
 }
 
-// --- Doc operations ---
-
-function docsDir(): string {
-  return join(getDataDir(), "docs");
-}
-
-function docPath(uuid: string): string {
-  return join(docsDir(), `${uuid}.md`);
-}
+// --- Doc operations (blob API) ---
 
 export async function writeDoc(_config: EngineConfig, id: string, content: string): Promise<string> {
-  const task = findTask(id);
-  if (!task) throw new Error(`No task found matching '${id}'`);
+  const record = findTask(id);
+  if (!record) throw new Error(`No task found matching '${id}'`);
+  const c = getCol();
+  const taskId = record._id as string;
 
-  await mkdir(docsDir(), { recursive: true });
-  await writeFile(docPath(task.uuid), content, "utf-8");
-  await modifyTask(_config, task.uuid, { has_doc: true }, ["+doc"]);
-  return `Doc written for task ${task.uuid}.`;
+  await c.writeBlob(taskId, "doc", content);
+  await c.update({ _id: taskId }, { $set: { has_doc: true, modified: now() } });
+  // Add +doc tag
+  const tags = (record.tags as string[] | undefined) ?? [];
+  if (!tags.includes("doc")) {
+    await c.update({ _id: taskId }, { $set: { tags: [...tags, "doc"] } });
+  }
+  return `Doc written for task ${taskId}.`;
 }
 
 export async function readDoc(_config: EngineConfig, id: string): Promise<string | null> {
-  const task = findTask(id);
-  if (!task) throw new Error(`No task found matching '${id}'`);
-
+  const record = findTask(id);
+  if (!record) throw new Error(`No task found matching '${id}'`);
+  const c = getCol();
   try {
-    return await readFile(docPath(task.uuid), "utf-8");
+    const buf = await c.readBlob(record._id as string, "doc");
+    return buf.toString("utf-8");
   } catch {
     return null;
   }
 }
 
 export async function deleteDoc(_config: EngineConfig, id: string): Promise<string> {
-  const task = findTask(id);
-  if (!task) throw new Error(`No task found matching '${id}'`);
+  const record = findTask(id);
+  if (!record) throw new Error(`No task found matching '${id}'`);
+  const c = getCol();
+  const taskId = record._id as string;
 
-  try { await unlink(docPath(task.uuid)); } catch { /* ok */ }
-  await modifyTask(_config, task.uuid, { has_doc: false }, ["-doc"]);
-  return `Doc deleted for task ${task.uuid}.`;
+  try { await c.deleteBlob(taskId, "doc"); } catch { /* ok */ }
+  await c.update({ _id: taskId }, { $set: { has_doc: undefined, modified: now() } });
+  // Remove -doc tag
+  const tags = ((record.tags as string[]) ?? []).filter((t) => t !== "doc");
+  await c.update({ _id: taskId }, { $set: { tags: tags.length > 0 ? tags : undefined } });
+  return `Doc deleted for task ${taskId}.`;
 }
 
 // --- Archive ---
@@ -699,14 +601,12 @@ export async function archiveTasks(
   _config: EngineConfig,
   olderThanDays: number = 90,
 ): Promise<string> {
-  const s = getStore();
-  const cutoff = Date.now() - olderThanDays * 86400000;
-  const count = await s.archive(
-    (task) =>
-      (task.status === "completed" || task.status === "deleted") &&
-      !!task.end &&
-      new Date(task.end).getTime() < cutoff,
-  );
+  const c = getCol();
+  const cutoffISO = new Date(Date.now() - olderThanDays * 86400000).toISOString();
+  const count = await c.archive({
+    $or: [{ status: "completed" }, { status: "deleted" }],
+    end: { $lt: cutoffISO },
+  });
   if (count === 0) return "No tasks to archive.";
   return `Archived ${count} task(s) older than ${olderThanDays} days.`;
 }
@@ -715,34 +615,12 @@ export async function loadArchivedTasks(
   _config: EngineConfig,
   segment: string,
 ): Promise<Task[]> {
-  const s = getStore();
-  const records = await s.loadArchive(segment);
-  return Array.from(records.values());
+  const c = getCol();
+  const records = await c.loadArchive(segment);
+  return records.map(toTask);
 }
 
 export function listArchiveSegments(): string[] {
-  const s = getStore();
-  return s.listArchiveSegments();
+  const c = getCol();
+  return c.listArchiveSegments();
 }
-
-// --- Helpers ---
-
-function findTask(id: string): Task | undefined {
-  const s = getStore();
-
-  // Try as UUID first
-  const byUuid = s.get(id);
-  if (byUuid) return byUuid;
-
-  // Try as numeric ID using index for O(1) lookup
-  const numId = parseInt(id, 10);
-  if (!isNaN(numId)) {
-    const idIndex = buildIdIndex(s.all());
-    const uuid = idIndex.get(numId);
-    return uuid ? s.get(uuid) : undefined;
-  }
-
-  return undefined;
-}
-
-
