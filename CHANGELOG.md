@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1 (2026-04-10)
+
+### Fixed
+- **CWD restoration in start-server.sh** — the dep install step (`cd $PLUGIN_DATA && npm ci`) changed the working directory but never restored it. This caused `process.cwd()` to return the plugin data directory instead of the project directory, producing wrong project slugs and storing task data in the wrong location. Tasks appeared lost on subsequent sessions when deps didn't need reinstalling (CWD stayed correct).
+
 ## 2.0.0 (2026-04-10)
 
 ### Changed (BREAKING)
