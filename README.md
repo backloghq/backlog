@@ -7,7 +7,7 @@
 
 Persistent, cross-session task management for Claude Code. Tasks survive sessions so work started by one agent can be picked up by another.
 
-Zero external dependencies — pure TypeScript with event-sourced storage. Install and it works.
+Built on [@backloghq/agentdb](https://github.com/backloghq/agentdb) — typed schemas, auto-increment IDs, virtual filters, blob storage. Pure TypeScript, zero native dependencies.
 
 ## Install
 
