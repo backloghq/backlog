@@ -146,9 +146,11 @@ async function drainSyncQueue(): Promise<void> {
         }
       } else if (entry.subagent_start) {
         const agentName = entry.subagent_start;
-        const unassigned = c.find({ filter: { status: "pending", agent: { $exists: false } } });
-        for (const task of unassigned.records) {
-          await c.update({ _id: task._id }, { $set: { agent: agentName, modified: now() } });
+        // Query once, not per-entry — avoid O(n²) if multiple subagent_start entries
+        for (const task of c.findAll()) {
+          if (task.status === "pending" && !task.agent) {
+            await c.update({ _id: task._id }, { $set: { agent: agentName, modified: now() } });
+          }
         }
       }
     } catch {
@@ -207,7 +209,7 @@ function computeUrgency(
     else if (daysUntilDue < 7) urgency += 4.0 * (1 - daysUntilDue / 7);
     else if (daysUntilDue < 14) urgency += 2.0 * (1 - (daysUntilDue - 7) / 7);
   }
-  const ageMs = Date.now() - new Date(t.entry as string).getTime();
+  const ageMs = t.entry ? Date.now() - new Date(t.entry as string).getTime() : 0;
   const ageDays = Math.min(ageMs / 86400000, 365);
   urgency += (ageDays / 365) * 2.0;
   return Math.round(urgency * 10000) / 10000;
@@ -249,9 +251,11 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   idCounter++;
   const newInstances = generateInstances(allTasks, () => idCounter++);
   for (const instance of newInstances) {
-    const record = { _id: instance.uuid, ...instance } as Record<string, unknown>;
-    await c.insert(record);
-    allRecords.push(record); // Append locally — no second findAll needed
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { uuid, id: _manualId, ...fields } = instance;
+    const record = { _id: uuid, ...fields } as Record<string, unknown>;
+    await c.insert(record); // autoIncrement assigns id
+    allRecords.push(record);
   }
 
   // Build indexes and compute urgency (single pass)
@@ -537,7 +541,7 @@ export async function importTasks(_config: EngineConfig, tasksJson: string): Pro
     const uuid = (raw.uuid as string) || randomUUID();
     const desc = raw.description as string;
     if (!desc || desc.trim().length === 0) throw new Error("Imported task description cannot be empty.");
-    if (desc.length > 500) throw new Error(`Imported task description exceeds 500 characters: "${desc.slice(0, 50)}..."`);
+    if (desc.length > 500) throw new Error("Imported task description exceeds 500 characters.");
 
     const doc: Record<string, unknown> = {
       _id: uuid,

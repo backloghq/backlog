@@ -591,6 +591,15 @@ describe("Engine operations", () => {
       const tasks = await exportTasks(config, "+TAGGED");
       expect(tasks).toHaveLength(1);
     });
+
+    it("+WAITING filters tasks with future wait date", async () => {
+      const futureDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      await addTask(config, "Waiting task", { wait: futureDate });
+      await addTask(config, "Normal task", {});
+      const waiting = await exportTasks(config, "+WAITING");
+      expect(waiting).toHaveLength(1);
+      expect(waiting[0].description).toBe("Waiting task");
+    });
   });
 
   describe("urgency", () => {
