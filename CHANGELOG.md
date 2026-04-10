@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.0.0 (2026-04-10)
+
+### Changed (BREAKING)
+- **Engine rewritten on AgentDB** — replaced raw `@backloghq/opslog` Store with `@backloghq/agentdb` Collection API. Task data is now managed via AgentDB with `defineSchema()`, typed validation, auto-increment IDs, date resolution on fields, virtual filters, and computed urgency.
+- **Filter compiler rewritten** — backlog filter syntax now translates to AgentDB JSON filter objects. Virtual tags (+OVERDUE, +BLOCKED, etc.) resolved via schema virtualFilters. Bare text triggers AgentDB's text search. Date modifiers (`.before`, `.after`) auto-resolve through dates.ts.
+- **Doc storage migrated to blob API** — `writeDoc`/`readDoc`/`deleteDoc` now use AgentDB's `Collection.writeBlob()`/`readBlob()`/`deleteBlob()` instead of filesystem `docs/` directory. Works with S3 backend transparently.
+- **Task records use `_id` as UUID** — AgentDB's `_id` field replaces the `uuid` field. Numeric `id` is now an `autoIncrement` schema field.
+- Direct `@backloghq/opslog` dependency removed — opslog is now a transitive dependency via agentdb.
+
+### Added
+- `src/engine/task-schema.ts` — declarative task collection schema with field validation, defaults, date resolution, virtual filters, computed urgency, and auto-increment IDs
+- Schema validation replaces manual `validateAttrs()` — field types, constraints, and patterns enforced by agentdb
+- `isDueTomorrow()` helper in dates.ts
+
+### Removed
+- Manual `validateAttrs()` function (replaced by schema)
+- Manual `nextId()` counter (replaced by autoIncrement)
+- Filesystem-based doc storage (replaced by blob API)
+
 ## 1.8.0 (2026-04-09)
 
 ### Added

@@ -7,11 +7,7 @@ import { resolveDate, formatDate, isOverdue, isDueToday, isDueTomorrow, isDueThi
 
 function resolveDateField(v: unknown): unknown {
   if (!v || typeof v !== "string" || v === "") return v;
-  try {
-    return formatDate(resolveDate(v));
-  } catch {
-    return v; // let schema validation catch it
-  }
+  return formatDate(resolveDate(v)); // throws on invalid date
 }
 
 export const taskSchema = defineSchema({

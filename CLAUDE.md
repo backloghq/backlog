@@ -38,8 +38,8 @@ Claude Code / Agent Teams
 **Key decisions:**
 - **TypeScript** — Zod schemas give explicit input validation (important when inputs come from LLMs), strong type safety, and the TS MCP SDK is the most mature.
 - **stdio transport** — standard for Claude Code MCP servers, zero network config.
-- **Native engine (not CLI wrapper)** — The engine is a pure TypeScript implementation using [opslog](../opslog) for storage. No external binaries required. All operations are direct function calls — no subprocess spawning, no shell injection surface.
-- **opslog storage** — Append-only operation log with in-memory materialized state. Supports undo via log replay, batched writes, and checkpoint-based recovery. Data lives in the project's `TASKDATA` directory.
+- **Native engine on AgentDB** — The engine uses [@backloghq/agentdb](../agentdb) with `defineSchema()` for typed validation, auto-increment IDs, date resolution, virtual filters, and computed fields. AgentDB uses opslog for crash-safe storage.
+- **AgentDB storage** — Append-only operation log with in-memory materialized state. Supports undo, batched writes, blob storage for docs, and checkpoint-based recovery. Data lives in the project's `TASKDATA` directory. S3 backend supported via `@backloghq/opslog-s3`.
 - **No persistent server state** — all state lives in the opslog data files. The MCP server is stateless.
 - **Per-project isolation** — each project gets its own `TASKDATA` directory. No shared backlog, no filter scoping — isolation at the filesystem level. Mandatory `TASKDATA` env var prevents accidental writes to the wrong project.
 

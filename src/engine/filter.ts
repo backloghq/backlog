@@ -1,32 +1,25 @@
 /**
  * Filter translator — converts backlog filter syntax to agentdb JSON filter objects.
- * AgentDB handles matching, indexing, and virtual filter resolution.
- *
- * Backlog syntax → AgentDB JSON:
- *   project:backend       → { project: "backend" }
- *   priority:H            → { priority: "H" }
- *   due.before:friday     → { due: { $lt: "<resolved ISO date>" } }
- *   +bug                  → { tags: { $contains: "bug" } }  (via agentdb compact filter)
- *   -old                  → { tags: { $not: { $contains: "old" } } }
- *   +OVERDUE              → { "+OVERDUE": true }  (triggers schema virtualFilter)
- *   auth                  → { $text: "auth" }  (via agentdb text search)
- *   42                    → { id: 42 }  (numeric ID)
- *   <uuid>                → { _id: "<uuid>" }
- *   A or B                → { $or: [A, B] }
- *   (A or B) C            → { $and: [{ $or: [A, B] }, C] }
+ * Handles virtual tags, date resolution, numeric IDs, and UUIDs on top of agentdb's compact filter parser.
  */
 import { resolveDate, formatDate } from "./dates.js";
 import { parseCompactFilter } from "@backloghq/agentdb";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Virtual filter tags defined in task-schema.ts — these are NOT regular tags
+const VIRTUAL_TAGS = new Set([
+  "+OVERDUE", "+ACTIVE", "+BLOCKED", "+UNBLOCKED", "+READY", "+BLOCKING",
+  "+WAITING", "+PENDING", "+COMPLETED", "+DELETED", "+RECURRING",
+  "+TAGGED", "+ANNOTATED", "+PROJECT", "+PRIORITY", "+DUE", "+SCHEDULED",
+  "+TODAY", "+TOMORROW", "+WEEK", "+UDA",
+]);
+
 // Date modifiers that need resolution
 const DATE_MODIFIERS = new Set(["before", "after", "by"]);
 
 /**
  * Compile a backlog filter string into an agentdb JSON filter object.
- * Handles backlog-specific syntax (date resolution, numeric IDs, UUIDs)
- * on top of agentdb's compact filter parser.
  */
 export function compileFilter(filter: string): Record<string, unknown> {
   const trimmed = filter.trim();
@@ -42,21 +35,49 @@ export function compileFilter(filter: string): Record<string, unknown> {
     return { _id: trimmed };
   }
 
-  // Pre-process: resolve dates in modifier expressions before passing to agentdb parser
-  const processed = preprocessDateModifiers(trimmed);
+  // Pre-process: extract virtual tags and resolve dates
+  const { cleaned, virtualKeys } = extractVirtualTags(trimmed);
+  const processed = preprocessDateModifiers(cleaned);
 
-  // Let agentdb's compact filter handle: +tag, -tag, field:value, field.modifier:value,
-  // bare text ($text), boolean ops (and/or), parentheses, virtual tags (+OVERDUE etc)
-  return parseCompactFilter(processed, "tags");
+  // Let agentdb handle the remaining filter syntax
+  let result: Record<string, unknown>;
+  if (processed.trim()) {
+    result = parseCompactFilter(processed, "tags");
+  } else {
+    result = {};
+  }
+
+  // Merge virtual tag keys into filter
+  for (const key of virtualKeys) {
+    result[key] = true;
+  }
+
+  return result;
 }
 
 /**
- * Pre-process the filter string to resolve date values in modifier expressions.
- * Converts due.before:friday → due.before:2026-04-11T00:00:00Z
- * so that agentdb's $lt/$gt operators work with ISO date strings.
+ * Extract virtual tag tokens (+OVERDUE, +ACTIVE, etc.) from the filter string.
+ * Returns the cleaned string (without virtual tags) and the extracted keys.
+ */
+function extractVirtualTags(filter: string): { cleaned: string; virtualKeys: string[] } {
+  const virtualKeys: string[] = [];
+  const parts: string[] = [];
+
+  for (const token of filter.split(/\s+/)) {
+    if (VIRTUAL_TAGS.has(token.toUpperCase())) {
+      virtualKeys.push(token.toUpperCase());
+    } else {
+      parts.push(token);
+    }
+  }
+
+  return { cleaned: parts.join(" "), virtualKeys };
+}
+
+/**
+ * Resolve date values in modifier expressions.
  */
 function preprocessDateModifiers(filter: string): string {
-  // Match patterns like field.modifier:value where modifier is a date modifier
   return filter.replace(
     /(\w+)\.(before|after|by):(\S+)/gi,
     (match, field, modifier, value) => {
@@ -65,7 +86,7 @@ function preprocessDateModifiers(filter: string): string {
         const resolved = formatDate(resolveDate(value));
         return `${field}.${modifier}:${resolved}`;
       } catch {
-        return match; // leave as-is if date resolution fails
+        return match;
       }
     },
   );

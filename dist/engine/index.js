@@ -258,7 +258,21 @@ export async function exportTasks(_config, filter) {
     }
     return filtered.map(toTask);
 }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function validatePreInsert(description, attrs) {
+    if (!description || description.trim().length === 0)
+        throw new Error("Description cannot be empty.");
+    if (description.length > 500)
+        throw new Error("Description must be under 500 characters.");
+    if (attrs.depends) {
+        for (const dep of attrs.depends.split(",").map((d) => d.trim()).filter(Boolean)) {
+            if (!UUID_RE.test(dep))
+                throw new Error(`Invalid dependency UUID: '${dep}'`);
+        }
+    }
+}
 export async function addTask(_config, description, attrs, extraArgs = []) {
+    validatePreInsert(description, attrs);
     const c = getCol();
     const uuid = randomUUID();
     const tags = [];
@@ -519,11 +533,20 @@ export async function importTasks(_config, tasksJson) {
 export async function getUnique(_config, attribute) {
     await drainSyncQueue();
     const c = getCol();
-    if (attribute === "tags" || attribute === "project") {
-        const result = c.distinct(attribute);
-        return result.values;
+    const values = new Set();
+    const records = c.findAll();
+    for (const record of records) {
+        if (record.status !== "pending" && record.status !== "recurring")
+            continue;
+        if (attribute === "tags") {
+            const tags = record.tags;
+            tags?.forEach((t) => values.add(t));
+        }
+        else if (attribute === "project" && record.project) {
+            values.add(record.project);
+        }
     }
-    return [];
+    return [...values];
 }
 // --- Doc operations (blob API) ---
 export async function writeDoc(_config, id, content) {
@@ -574,17 +597,26 @@ export async function deleteDoc(_config, id) {
 export async function archiveTasks(_config, olderThanDays = 90) {
     const c = getCol();
     const cutoffISO = new Date(Date.now() - olderThanDays * 86400000).toISOString();
-    const count = await c.archive({
-        $or: [{ status: "completed" }, { status: "deleted" }],
-        end: { $lt: cutoffISO },
-    });
+    // Use predicate-based archive to handle complex date+status filter
+    const allRecords = c.findAll();
+    const toArchive = [];
+    for (const r of allRecords) {
+        if ((r.status === "completed" || r.status === "deleted") && r.end && new Date(r.end).getTime() <= new Date(cutoffISO).getTime()) {
+            toArchive.push(r._id);
+        }
+    }
+    if (toArchive.length === 0)
+        return "No tasks to archive.";
+    const count = await c.archive({ _id: { $in: toArchive } });
     if (count === 0)
         return "No tasks to archive.";
     return `Archived ${count} task(s) older than ${olderThanDays} days.`;
 }
 export async function loadArchivedTasks(_config, segment) {
     const c = getCol();
-    const records = await c.loadArchive(segment);
+    // Strip path prefix if present (listArchiveSegments returns full paths from opslog)
+    const period = segment.replace(/^archive\/archive-/, "").replace(/\.json$/, "");
+    const records = await c.loadArchive(period);
     return records.map(toTask);
 }
 export function listArchiveSegments() {
