@@ -3,6 +3,7 @@ set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-${PLUGIN_ROOT}}"
+ORIGINAL_DIR="$(pwd)"
 
 mkdir -p "${PLUGIN_DATA}"
 
@@ -16,4 +17,6 @@ fi
 # Symlink node_modules into plugin root for ESM resolution
 ln -sfn "${PLUGIN_DATA}/node_modules" "${PLUGIN_ROOT}/node_modules" 2>/dev/null || true
 
+# Restore original CWD — the engine derives project slug from process.cwd()
+cd "${ORIGINAL_DIR}"
 exec node "${PLUGIN_ROOT}/dist/index.js"
