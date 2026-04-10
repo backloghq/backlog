@@ -53,6 +53,8 @@ let col = null;
 let config = null;
 export async function ensureSetup(cfg) {
     config = cfg;
+    // Reset autoIncrement counters for fresh stores (important for tests)
+    taskSchema.counters.clear();
     db = new AgentDB(cfg.dataDir, {
         checkpointThreshold: 50,
         backend: cfg.backend,
@@ -80,7 +82,7 @@ function getDataDir() {
 function now() {
     return formatDate(new Date());
 }
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// UUID_RE used by filter.ts
 // --- Sync Queue ---
 async function drainSyncQueue() {
     const dir = getDataDir();
@@ -200,6 +202,7 @@ function computeUrgency(t, tasksByUuid, blockingIndex) {
 }
 // --- Helpers ---
 function toTask(record) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, _version, ...rest } = record;
     return { uuid: _id, ...rest };
 }
@@ -435,6 +438,7 @@ export async function duplicateTask(_config, id, attrs, extraArgs = []) {
     const c = getCol();
     const uuid = randomUUID();
     const timestamp = now();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, _version, id: _numId, ...fields } = record;
     const newRecord = {
         _id: uuid,

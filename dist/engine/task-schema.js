@@ -74,10 +74,9 @@ export const taskSchema = defineSchema({
                 return dep && (dep.status === "completed" || dep.status === "deleted");
             });
         },
-        "+BLOCKING": (t, getter) => {
-            // A task is blocking if other pending tasks depend on it
-            // This requires scanning all tasks — handled via computed urgency instead
-            return false; // placeholder, actual blocking status computed in urgency
+        "+BLOCKING": () => {
+            // Blocking status requires scanning all tasks — computed in urgency instead
+            return false;
         },
         "+WAITING": (t) => t.status === "pending" && !!t.wait && new Date(t.wait) > new Date(),
         "+PENDING": (t) => t.status === "pending",

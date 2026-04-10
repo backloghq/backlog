@@ -71,6 +71,8 @@ let config: EngineConfig | null = null;
 
 export async function ensureSetup(cfg: EngineConfig): Promise<void> {
   config = cfg;
+  // Reset autoIncrement counters for fresh stores (important for tests)
+  taskSchema.counters.clear();
   db = new AgentDB(cfg.dataDir, {
     checkpointThreshold: 50,
     backend: cfg.backend,
