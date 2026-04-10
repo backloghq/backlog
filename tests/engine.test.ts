@@ -257,6 +257,73 @@ describe("Engine operations", () => {
       expect(tasks[0].tags).not.toContain("old");
       expect(tasks[0].tags).toContain("new");
     });
+
+    it("modifies dependencies", async () => {
+      await addTask(config, "Dep target", {});
+      await addTask(config, "Dependent", {});
+      const all = await exportTasks(config, "");
+      const targetUuid = all.find((t) => t.description === "Dep target")!.uuid;
+      await modifyTask(config, "2", { depends: targetUuid });
+      const after = await exportTasks(config, "");
+      const dep = after.find((t) => t.description === "Dependent");
+      expect(dep?.depends).toContain(targetUuid);
+    });
+
+    it("clears dependencies with empty string", async () => {
+      await addTask(config, "Target", {});
+      await addTask(config, "Has dep", {});
+      const all = await exportTasks(config, "");
+      const uuid = all.find((t) => t.description === "Target")!.uuid;
+      await modifyTask(config, "2", { depends: uuid });
+      await modifyTask(config, "2", { depends: "" });
+      const after = await exportTasks(config, "");
+      const task = after.find((t) => t.description === "Has dep");
+      expect(task?.depends).toBeUndefined();
+    });
+
+    it("modifies scheduled date", async () => {
+      await addTask(config, "Schedule me", {});
+      await modifyTask(config, "1", { scheduled: "tomorrow" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].scheduled).toBeDefined();
+    });
+
+    it("clears scheduled date", async () => {
+      await addTask(config, "Scheduled", { scheduled: "tomorrow" });
+      await modifyTask(config, "1", { scheduled: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].scheduled).toBeUndefined();
+    });
+
+    it("modifies wait date", async () => {
+      await addTask(config, "Wait task", {});
+      const futureDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      await modifyTask(config, "1", { wait: futureDate });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].wait).toBeDefined();
+    });
+
+    it("clears wait date", async () => {
+      const futureDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      await addTask(config, "Was waiting", { wait: futureDate });
+      await modifyTask(config, "1", { wait: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].wait).toBeUndefined();
+    });
+
+    it("clears priority with empty string", async () => {
+      await addTask(config, "Had priority", { priority: "H" });
+      await modifyTask(config, "1", { priority: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].priority).toBeUndefined();
+    });
+
+    it("clears agent with empty string", async () => {
+      await addTask(config, "Had agent", { agent: "explorer" });
+      await modifyTask(config, "1", { agent: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].agent).toBeUndefined();
+    });
   });
 
   describe("taskCommand", () => {
