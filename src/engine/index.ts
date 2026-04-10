@@ -68,11 +68,13 @@ export async function getConfig(): Promise<EngineConfig> {
 let db: AgentDB | null = null;
 let col: Collection | null = null;
 let config: EngineConfig | null = null;
+let queueDrained = false;
 
 export async function ensureSetup(cfg: EngineConfig): Promise<void> {
   config = cfg;
-  // Reset autoIncrement counters for fresh stores (important for tests)
+  // Reset state for fresh stores (important for tests)
   taskSchema.counters.clear();
+  queueDrained = false;
   db = new AgentDB(cfg.dataDir, {
     checkpointThreshold: 50,
     backend: cfg.backend,
@@ -108,12 +110,14 @@ function now(): string {
 // --- Sync Queue ---
 
 async function drainSyncQueue(): Promise<void> {
+  if (queueDrained) return;
   const dir = getDataDir();
   const queuePath = join(dir, "sync-queue.jsonl");
   let content: string;
   try {
     content = await readFile(queuePath, "utf-8");
   } catch {
+    queueDrained = true;
     return;
   }
   const lines = content.trim().split("\n").filter(Boolean);
@@ -138,7 +142,7 @@ async function drainSyncQueue(): Promise<void> {
           const match = matches.records[0];
           await c.update({ _id: match._id }, { $set: { status: "completed", end: now(), modified: now() } });
         } else if (matches.records.length > 1) {
-          console.error(`backlog: sync completion skipped — ${matches.records.length} pending tasks match "${entry.completed}"`);
+          console.error(`backlog: sync completion skipped — ${matches.records.length} pending tasks match the completed entry`);
         }
       } else if (entry.subagent_start) {
         const agentName = entry.subagent_start;
@@ -152,6 +156,7 @@ async function drainSyncQueue(): Promise<void> {
     }
   }
   await unlink(queuePath);
+  queueDrained = true;
 }
 
 // --- Urgency ---
@@ -244,29 +249,30 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   idCounter++;
   const newInstances = generateInstances(allTasks, () => idCounter++);
   for (const instance of newInstances) {
-    await c.insert({ _id: instance.uuid, ...instance });
+    const record = { _id: instance.uuid, ...instance } as Record<string, unknown>;
+    await c.insert(record);
+    allRecords.push(record); // Append locally — no second findAll needed
   }
 
-  // Re-read after instance generation
-  const updatedRecords = c.findAll();
-  const tasksByUuid = new Map(updatedRecords.map((r) => [r._id as string, r]));
-  const blockingIndex = buildBlockingIndex(updatedRecords);
-
-  // Compute urgency on each record
-  for (const record of updatedRecords) {
+  // Build indexes and compute urgency (single pass)
+  const tasksByUuid = new Map(allRecords.map((r) => [r._id as string, r]));
+  const blockingIndex = buildBlockingIndex(allRecords);
+  for (const record of allRecords) {
     record.urgency = computeUrgency(record, tasksByUuid, blockingIndex);
   }
 
   // Apply filter
   const filterObj = compileFilter(filter);
   const filtered = Object.keys(filterObj).length === 0
-    ? updatedRecords
+    ? allRecords
     : c.find({ filter: filterObj, limit: 10000 }).records;
 
-  // Compute urgency on filtered results (if not already)
-  for (const record of filtered) {
-    if (record.urgency === undefined) {
-      record.urgency = computeUrgency(record, tasksByUuid, blockingIndex);
+  // Ensure urgency on filtered results (find() returns fresh records without urgency)
+  if (Object.keys(filterObj).length > 0) {
+    for (const record of filtered) {
+      if (record.urgency === undefined) {
+        record.urgency = tasksByUuid.get(record._id as string)?.urgency ?? computeUrgency(record, tasksByUuid, blockingIndex);
+      }
     }
   }
 
@@ -582,12 +588,9 @@ export async function writeDoc(_config: EngineConfig, id: string, content: strin
   const taskId = record._id as string;
 
   await c.writeBlob(taskId, "doc", content);
-  await c.update({ _id: taskId }, { $set: { has_doc: true, modified: now() } });
-  // Add +doc tag
-  const tags = (record.tags as string[] | undefined) ?? [];
-  if (!tags.includes("doc")) {
-    await c.update({ _id: taskId }, { $set: { tags: [...tags, "doc"] } });
-  }
+  const tags = [...((record.tags as string[] | undefined) ?? [])];
+  if (!tags.includes("doc")) tags.push("doc");
+  await c.update({ _id: taskId }, { $set: { has_doc: true, modified: now(), tags } });
   return `Doc written for task ${taskId}.`;
 }
 
@@ -610,10 +613,8 @@ export async function deleteDoc(_config: EngineConfig, id: string): Promise<stri
   const taskId = record._id as string;
 
   try { await c.deleteBlob(taskId, "doc"); } catch { /* ok */ }
-  await c.update({ _id: taskId }, { $set: { has_doc: undefined, modified: now() } });
-  // Remove -doc tag
   const tags = ((record.tags as string[]) ?? []).filter((t) => t !== "doc");
-  await c.update({ _id: taskId }, { $set: { tags: tags.length > 0 ? tags : undefined } });
+  await c.update({ _id: taskId }, { $set: { has_doc: undefined, modified: now(), tags: tags.length > 0 ? tags : undefined } });
   return `Doc deleted for task ${taskId}.`;
 }
 

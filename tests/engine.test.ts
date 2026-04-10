@@ -160,6 +160,20 @@ describe("Engine operations", () => {
       const after = await exportTasks(config, "status:pending");
       expect(after.find((t) => t.description === "Four")?.id).toBe(4);
     });
+
+    it("autoIncrement counter survives reopen", async () => {
+      await addTask(config, "Before reopen", {});
+      const before = await exportTasks(config, "");
+      expect(before[0].id).toBe(1);
+
+      await shutdown();
+      await ensureSetup(config);
+
+      await addTask(config, "After reopen", {});
+      const after = await exportTasks(config, "");
+      const reopened = after.find((t) => t.description === "After reopen");
+      expect(reopened?.id).toBe(2);
+    });
   });
 
   describe("filters", () => {
@@ -427,6 +441,17 @@ describe("Engine operations", () => {
       await writeDoc(config, "1", "Content");
       const content = await readDoc(config, "1");
       expect(content).toBe("Content");
+    });
+
+    it("doc blob persists across reopen", async () => {
+      await addTask(config, "Persist doc", {});
+      await writeDoc(config, "1", "Persistent content");
+
+      await shutdown();
+      await ensureSetup(config);
+
+      const content = await readDoc(config, "1");
+      expect(content).toBe("Persistent content");
     });
   });
 

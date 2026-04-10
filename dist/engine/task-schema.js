@@ -27,6 +27,7 @@ export const taskSchema = defineSchema({
         depends: { type: "string[]" },
         recur: { type: "string" },
         agent: { type: "string" },
+        // annotations stored as array of {entry, description} — no schema type constraint (AgentDB allows extra fields)
         start: { type: "string" },
         end: { type: "string" },
         entry: { type: "string" },
