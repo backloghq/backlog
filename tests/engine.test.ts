@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, access } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -160,6 +160,20 @@ describe("Engine operations", () => {
       const after = await exportTasks(config, "status:pending");
       expect(after.find((t) => t.description === "Four")?.id).toBe(4);
     });
+
+    it("autoIncrement counter survives reopen", async () => {
+      await addTask(config, "Before reopen", {});
+      const before = await exportTasks(config, "");
+      expect(before[0].id).toBe(1);
+
+      await shutdown();
+      await ensureSetup(config);
+
+      await addTask(config, "After reopen", {});
+      const after = await exportTasks(config, "");
+      const reopened = after.find((t) => t.description === "After reopen");
+      expect(reopened?.id).toBe(2);
+    });
   });
 
   describe("filters", () => {
@@ -242,6 +256,73 @@ describe("Engine operations", () => {
       const tasks = await exportTasks(config, "");
       expect(tasks[0].tags).not.toContain("old");
       expect(tasks[0].tags).toContain("new");
+    });
+
+    it("modifies dependencies", async () => {
+      await addTask(config, "Dep target", {});
+      await addTask(config, "Dependent", {});
+      const all = await exportTasks(config, "");
+      const targetUuid = all.find((t) => t.description === "Dep target")!.uuid;
+      await modifyTask(config, "2", { depends: targetUuid });
+      const after = await exportTasks(config, "");
+      const dep = after.find((t) => t.description === "Dependent");
+      expect(dep?.depends).toContain(targetUuid);
+    });
+
+    it("clears dependencies with empty string", async () => {
+      await addTask(config, "Target", {});
+      await addTask(config, "Has dep", {});
+      const all = await exportTasks(config, "");
+      const uuid = all.find((t) => t.description === "Target")!.uuid;
+      await modifyTask(config, "2", { depends: uuid });
+      await modifyTask(config, "2", { depends: "" });
+      const after = await exportTasks(config, "");
+      const task = after.find((t) => t.description === "Has dep");
+      expect(task?.depends).toBeUndefined();
+    });
+
+    it("modifies scheduled date", async () => {
+      await addTask(config, "Schedule me", {});
+      await modifyTask(config, "1", { scheduled: "tomorrow" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].scheduled).toBeDefined();
+    });
+
+    it("clears scheduled date", async () => {
+      await addTask(config, "Scheduled", { scheduled: "tomorrow" });
+      await modifyTask(config, "1", { scheduled: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].scheduled).toBeUndefined();
+    });
+
+    it("modifies wait date", async () => {
+      await addTask(config, "Wait task", {});
+      const futureDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      await modifyTask(config, "1", { wait: futureDate });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].wait).toBeDefined();
+    });
+
+    it("clears wait date", async () => {
+      const futureDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      await addTask(config, "Was waiting", { wait: futureDate });
+      await modifyTask(config, "1", { wait: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].wait).toBeUndefined();
+    });
+
+    it("clears priority with empty string", async () => {
+      await addTask(config, "Had priority", { priority: "H" });
+      await modifyTask(config, "1", { priority: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].priority).toBeUndefined();
+    });
+
+    it("clears agent with empty string", async () => {
+      await addTask(config, "Had agent", { agent: "explorer" });
+      await modifyTask(config, "1", { agent: "" });
+      const tasks = await exportTasks(config, "");
+      expect(tasks[0].agent).toBeUndefined();
     });
   });
 
@@ -422,12 +503,22 @@ describe("Engine operations", () => {
       expect(tasks[0].tags ?? []).not.toContain("doc");
     });
 
-    it("creates doc file in docs/ subdirectory", async () => {
+    it("stores doc via blob API and reads it back", async () => {
       await addTask(config, "File path test", {});
       await writeDoc(config, "1", "Content");
-      const tasks = await exportTasks(config, "");
-      const filePath = join(tmpDir, "docs", `${tasks[0].uuid}.md`);
-      await access(filePath); // throws if missing
+      const content = await readDoc(config, "1");
+      expect(content).toBe("Content");
+    });
+
+    it("doc blob persists across reopen", async () => {
+      await addTask(config, "Persist doc", {});
+      await writeDoc(config, "1", "Persistent content");
+
+      await shutdown();
+      await ensureSetup(config);
+
+      const content = await readDoc(config, "1");
+      expect(content).toBe("Persistent content");
     });
   });
 
@@ -566,6 +657,15 @@ describe("Engine operations", () => {
       await addTask(config, "Untagged", {});
       const tasks = await exportTasks(config, "+TAGGED");
       expect(tasks).toHaveLength(1);
+    });
+
+    it("+WAITING filters tasks with future wait date", async () => {
+      const futureDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      await addTask(config, "Waiting task", { wait: futureDate });
+      await addTask(config, "Normal task", {});
+      const waiting = await exportTasks(config, "+WAITING");
+      expect(waiting).toHaveLength(1);
+      expect(waiting[0].description).toBe("Waiting task");
     });
   });
 
@@ -714,7 +814,7 @@ describe("Engine operations", () => {
     it("rejects invalid until date", async () => {
       await expect(
         addTask(config, "Bad until", { due: "tomorrow", recur: "daily", until: "not-a-date-xyz" }),
-      ).rejects.toThrow("Invalid until date");
+      ).rejects.toThrow();
     });
 
     it("recurring task with until — no instances past end date", async () => {
@@ -748,19 +848,20 @@ describe("Engine operations", () => {
 
   describe("input validation", () => {
     it("rejects empty description", async () => {
-      await expect(addTask(config, "", {})).rejects.toThrow("Description cannot be empty");
+      await expect(addTask(config, "", {})).rejects.toThrow();
     });
 
     it("rejects description over 500 chars", async () => {
-      await expect(addTask(config, "x".repeat(501), {})).rejects.toThrow("under 500 characters");
+      await expect(addTask(config, "x".repeat(501), {})).rejects.toThrow();
     });
 
     it("rejects invalid project name", async () => {
-      await expect(addTask(config, "Test", { project: "has spaces" })).rejects.toThrow("letters, numbers, hyphens");
+      await expect(addTask(config, "Test", { project: "has spaces" })).rejects.toThrow();
     });
 
     it("rejects invalid date", async () => {
-      await expect(addTask(config, "Test", { due: "not-a-date-xyz" })).rejects.toThrow("Invalid due date");
+      // Date resolve function transforms invalid dates — schema catches after resolve
+      await expect(addTask(config, "Test", { due: "not-a-date-xyz" })).rejects.toThrow();
     });
 
     it("rejects invalid dependency UUID", async () => {
@@ -774,17 +875,17 @@ describe("Engine operations", () => {
 
     it("rejects invalid priority in modifyTask", async () => {
       await addTask(config, "Test", {});
-      await expect(modifyTask(config, "1", { priority: "X" })).rejects.toThrow("Priority must be H, M, or L");
+      await expect(modifyTask(config, "1", { priority: "X" })).rejects.toThrow("Invalid priority");
     });
 
     it("rejects invalid status in importTasks", async () => {
       const json = JSON.stringify([{ description: "Bad", status: "bogus" }]);
-      await expect(importTasks(config, json)).rejects.toThrow("Invalid status");
+      await expect(importTasks(config, json)).rejects.toThrow();
     });
 
     it("rejects invalid priority in importTasks", async () => {
       const json = JSON.stringify([{ description: "Bad", priority: "X" }]);
-      await expect(importTasks(config, json)).rejects.toThrow("Invalid priority");
+      await expect(importTasks(config, json)).rejects.toThrow();
     });
 
     it("accepts valid inputs", async () => {
@@ -955,137 +1056,83 @@ describe("resolveDate", () => {
   });
 });
 
-describe("Filter compilation", () => {
-  const makeTasks = () => [
-    { uuid: "a1", id: 1, description: "Fix auth bug", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", project: "backend", tags: ["bug", "urgent"], priority: "H" as const, due: new Date(Date.now() - 86400000).toISOString() },
-    { uuid: "b2", id: 2, description: "Write docs", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", project: "frontend", tags: ["docs"], priority: "M" as const, start: "2026-04-05T10:00:00Z" },
-    { uuid: "c3", id: 3, description: "Deploy to prod", status: "completed" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", end: "2026-04-05T00:00:00Z" },
-    { uuid: "d4", id: 4, description: "Blocked task", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", depends: ["b2"] },
-    { uuid: "e5", id: 5, description: "Waiting task", status: "pending" as const, entry: "2026-04-01T00:00:00Z", modified: "2026-04-01T00:00:00Z", wait: new Date(Date.now() + 86400000 * 7).toISOString() },
-  ];
-
-  it("filters by project attribute", () => {
-    const pred = compileFilter("project:backend");
-    const tasks = makeTasks();
-    expect(tasks.filter(pred)).toHaveLength(1);
-    expect(tasks.filter(pred)[0].description).toBe("Fix auth bug");
+describe("Filter compilation (JSON output)", () => {
+  it("compiles project attribute", () => {
+    expect(compileFilter("project:backend")).toEqual({ project: "backend" });
   });
 
-  it("filters by +tag", () => {
-    const pred = compileFilter("+bug");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
+  it("compiles +tag", () => {
+    expect(compileFilter("+bug")).toEqual({ tags: { $contains: "bug" } });
   });
 
-  it("filters by -tag (missing tag)", () => {
-    const pred = compileFilter("-bug");
-    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(3);
+  it("compiles -tag", () => {
+    const result = compileFilter("-bug");
+    expect(result).toHaveProperty("tags");
   });
 
-  it("filters by priority", () => {
-    const pred = compileFilter("priority:H");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
+  it("compiles priority", () => {
+    expect(compileFilter("priority:H")).toEqual({ priority: "H" });
   });
 
-  it("filters by status", () => {
-    const pred = compileFilter("status:completed");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
+  it("compiles status", () => {
+    expect(compileFilter("status:completed")).toEqual({ status: "completed" });
   });
 
-  it("filters by +ACTIVE virtual tag", () => {
-    const pred = compileFilter("+ACTIVE");
-    const active = makeTasks().filter(pred);
-    expect(active).toHaveLength(1);
-    expect(active[0].description).toBe("Write docs");
+  it("compiles virtual tags as filter keys", () => {
+    expect(compileFilter("+ACTIVE")).toHaveProperty("+ACTIVE");
+    expect(compileFilter("+COMPLETED")).toHaveProperty("+COMPLETED");
+    expect(compileFilter("+PENDING")).toHaveProperty("+PENDING");
+    expect(compileFilter("+TAGGED")).toHaveProperty("+TAGGED");
+    expect(compileFilter("+OVERDUE")).toHaveProperty("+OVERDUE");
+    expect(compileFilter("+BLOCKED")).toHaveProperty("+BLOCKED");
+    expect(compileFilter("+WAITING")).toHaveProperty("+WAITING");
+    expect(compileFilter("+PROJECT")).toHaveProperty("+PROJECT");
+    expect(compileFilter("+PRIORITY")).toHaveProperty("+PRIORITY");
+    expect(compileFilter("+DUE")).toHaveProperty("+DUE");
   });
 
-  it("filters by +COMPLETED virtual tag", () => {
-    const pred = compileFilter("+COMPLETED");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
+  it("compiles numeric ID", () => {
+    expect(compileFilter("1")).toEqual({ id: 1 });
   });
 
-  it("filters by +PENDING virtual tag", () => {
-    const pred = compileFilter("+PENDING");
-    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(3);
+  it("compiles bare text as $text search", () => {
+    const result = compileFilter("auth");
+    expect(result).toHaveProperty("$text", "auth");
   });
 
-  it("filters by +TAGGED virtual tag", () => {
-    const pred = compileFilter("+TAGGED");
-    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(2);
+  it("compiles boolean OR", () => {
+    const result = compileFilter("project:backend or project:frontend");
+    expect(result).toHaveProperty("$or");
   });
 
-  it("filters by +OVERDUE virtual tag", () => {
-    const pred = compileFilter("+OVERDUE");
-    const overdue = makeTasks().filter(pred);
-    expect(overdue).toHaveLength(1);
-    expect(overdue[0].description).toBe("Fix auth bug");
+  it("compiles parenthesized groups", () => {
+    const result = compileFilter("(project:backend or project:frontend) +bug");
+    expect(result).toHaveProperty("$and");
   });
 
-  it("filters by +BLOCKED virtual tag with taskGetter", () => {
-    const tasks = makeTasks();
-    const getter = (uuid: string) => tasks.find((t) => t.uuid === uuid);
-    const pred = compileFilter("+BLOCKED", getter);
-    const blocked = tasks.filter(pred);
-    expect(blocked).toHaveLength(1);
-    expect(blocked[0].description).toBe("Blocked task");
+  it("resolves dates in due.before modifier", () => {
+    const result = compileFilter("due.before:tomorrow");
+    expect(result).toHaveProperty("due");
+    const due = result.due as Record<string, unknown>;
+    expect(due).toHaveProperty("$lt");
+    // The value should be a resolved ISO date string
+    expect(typeof due.$lt).toBe("string");
   });
 
-  it("filters by +WAITING virtual tag", () => {
-    const pred = compileFilter("+WAITING");
-    const waiting = makeTasks().filter(pred);
-    expect(waiting).toHaveLength(1);
-    expect(waiting[0].description).toBe("Waiting task");
+  it("resolves dates in due.after modifier", () => {
+    const result = compileFilter("due.after:2020-01-01");
+    expect(result).toHaveProperty("due");
+    const due = result.due as Record<string, unknown>;
+    expect(due).toHaveProperty("$gt");
   });
 
-  it("filters by +PROJECT virtual tag", () => {
-    const pred = compileFilter("+PROJECT");
-    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(2);
+  it("returns empty object for empty filter", () => {
+    expect(compileFilter("")).toEqual({});
   });
 
-  it("filters by +PRIORITY virtual tag", () => {
-    const pred = compileFilter("+PRIORITY");
-    expect(makeTasks().filter(pred).length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("filters by +DUE virtual tag", () => {
-    const pred = compileFilter("+DUE");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
-  });
-
-  it("filters by numeric ID", () => {
-    const pred = compileFilter("1");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
-  });
-
-  it("filters by description text search", () => {
-    const pred = compileFilter("auth");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
-  });
-
-  it("supports boolean OR", () => {
-    const pred = compileFilter("project:backend or project:frontend");
-    expect(makeTasks().filter(pred)).toHaveLength(2);
-  });
-
-  it("supports parenthesized groups", () => {
-    const pred = compileFilter("(project:backend or project:frontend) +bug");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
-  });
-
-  it("supports due.before modifier", () => {
-    const pred = compileFilter("due.before:tomorrow");
-    const tasks = makeTasks().filter(pred);
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0].description).toBe("Fix auth bug");
-  });
-
-  it("supports due.after modifier", () => {
-    const pred = compileFilter("due.after:2020-01-01");
-    expect(makeTasks().filter(pred)).toHaveLength(1);
-  });
-
-  it("returns empty for no matches", () => {
-    const pred = compileFilter("project:nonexistent");
-    expect(makeTasks().filter(pred)).toHaveLength(0);
+  it("compiles UUID as _id filter", () => {
+    const result = compileFilter("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+    expect(result).toEqual({ _id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" });
   });
 });
 

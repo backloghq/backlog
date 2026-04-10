@@ -12,7 +12,7 @@
       "name": "backlog",
       "source": "./",
       "description": "Persistent, cross-session task management for Claude Code. 24 tools, 7 skills, agent coordination, doc-driven development.",
-      "version": "1.8.0",
+      "version": "2.0.0",
       "author": {
         "name": "BacklogHQ"
       },

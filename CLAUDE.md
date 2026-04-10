@@ -31,15 +31,15 @@ Claude Code / Agent Teams
          ▼
   ┌──────────────┐
   │  Engine       │  Native TypeScript (src/engine/)
-  │  (opslog)     │  Append-only log, in-memory index, checkpoint recovery
+  │  (AgentDB)    │  defineSchema, collections, blob storage, opslog underneath
   └──────────────┘
 ```
 
 **Key decisions:**
 - **TypeScript** — Zod schemas give explicit input validation (important when inputs come from LLMs), strong type safety, and the TS MCP SDK is the most mature.
 - **stdio transport** — standard for Claude Code MCP servers, zero network config.
-- **Native engine (not CLI wrapper)** — The engine is a pure TypeScript implementation using [opslog](../opslog) for storage. No external binaries required. All operations are direct function calls — no subprocess spawning, no shell injection surface.
-- **opslog storage** — Append-only operation log with in-memory materialized state. Supports undo via log replay, batched writes, and checkpoint-based recovery. Data lives in the project's `TASKDATA` directory.
+- **Native engine on AgentDB** — The engine uses [@backloghq/agentdb](../agentdb) with `defineSchema()` for typed validation, auto-increment IDs, date resolution, virtual filters, and computed fields. AgentDB uses opslog for crash-safe storage.
+- **AgentDB storage** — Append-only operation log with in-memory materialized state. Supports undo, batched writes, blob storage for docs, and checkpoint-based recovery. Data lives in the project's `TASKDATA` directory. S3 backend supported via `@backloghq/opslog-s3`.
 - **No persistent server state** — all state lives in the opslog data files. The MCP server is stateless.
 - **Per-project isolation** — each project gets its own `TASKDATA` directory. No shared backlog, no filter scoping — isolation at the filesystem level. Mandatory `TASKDATA` env var prevents accidental writes to the wrong project.
 
@@ -58,8 +58,9 @@ src/
     docs.ts             # task_doc_write, task_doc_read, task_doc_delete
     archive.ts          # task_archive, task_archive_list, task_archive_load
   engine/
-    index.ts            # Engine: opslog-backed store, all task operations
-    filter.ts           # Filter compiler: parses filter expressions into predicates
+    index.ts            # Engine: AgentDB-backed store, all task operations
+    task-schema.ts      # Task collection schema: defineSchema() with fields, virtualFilters, hooks
+    filter.ts           # Filter translator: backlog syntax → AgentDB JSON filters
     dates.ts            # Date resolution: natural language dates → ISO timestamps
     recurrence.ts       # Recurring task template expansion
     types.ts            # Task type definition
@@ -162,7 +163,7 @@ The engine uses [opslog](../opslog), an append-only operation log. Each write (s
 
 ### Filter Compilation
 
-The filter compiler (`src/engine/filter.ts`) parses filter expressions into predicate functions. Supports:
+The filter translator (`src/engine/filter.ts`) converts backlog filter syntax into AgentDB JSON filter objects. Virtual tags are resolved by AgentDB via the schema's `virtualFilters`. Supports:
 - Attribute matching: `project:X`, `status:pending`, `priority:H`, `agent:explorer`
 - Attribute modifiers: `.before`, `.after`, `.by`, `.is`, `.not`, `.has`, `.hasnt`, `.none`, `.any`, `.startswith`, `.endswith`
 - Tags: `+tag` (has tag), `-tag` (missing tag)

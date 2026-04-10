@@ -80,6 +80,15 @@ export function isDueToday(due: string): boolean {
     d.getDate() === now.getDate();
 }
 
+export function isDueTomorrow(due: string): boolean {
+  const d = new Date(due);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return d.getFullYear() === tomorrow.getFullYear() &&
+    d.getMonth() === tomorrow.getMonth() &&
+    d.getDate() === tomorrow.getDate();
+}
+
 export function isDueThisWeek(due: string): boolean {
   const d = new Date(due);
   const now = new Date();
