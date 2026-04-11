@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.2 (2026-04-11)
+
+### Fixed
+- **Imported tasks now get numeric IDs** — upgraded `@backloghq/agentdb` from 1.1.0 to 1.1.1 which fixes `insertMany` to apply schema hooks (autoIncrement, defaults, date resolution). Previously imported tasks had no numeric `id` field and couldn't be looked up by number.
+
 ## 2.0.1 (2026-04-10)
 
 ### Fixed
