@@ -1,6 +1,6 @@
 {
   "name": "agent-teams-task-mcp",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Persistent task management plugin for Claude Code and agent teams",
   "main": "dist/index.js",
   "scripts": {
@@ -20,7 +20,7 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@backloghq/agentdb": "^1.1.1",
+    "@backloghq/agentdb": "^1.2.0",
     "@cfworker/json-schema": "^4.1.1",
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
     "zod": "^4.3.6"
