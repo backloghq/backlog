@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.1 (2026-04-11)
+
+### Fixed
+- **Snapshot loading crash on startup** — upgraded `@backloghq/agentdb` from 1.2.0 to 1.2.1, which fixes opslog 0.8.0 failing to parse multi-line legacy JSON snapshots (first-line detection broke on `{` alone).
+
 ## 2.1.0 (2026-04-11)
 
 ### Changed
