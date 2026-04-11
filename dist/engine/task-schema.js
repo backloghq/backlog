@@ -36,6 +36,7 @@ export const taskSchema = defineSchema({
         has_doc: { type: "boolean" },
     },
     indexes: ["status", "project", "priority"],
+    arrayIndexes: ["tags", "depends"],
     virtualFilters: {
         "+OVERDUE": (t) => t.status === "pending" && !!t.due && isOverdue(t.due),
         "+ACTIVE": (t) => t.status === "pending" && !!t.start,

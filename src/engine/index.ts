@@ -137,7 +137,7 @@ async function drainSyncQueue(): Promise<void> {
           ...(entry.agent && { agent: entry.agent }),
         });
       } else if (entry.completed) {
-        const matches = c.find({ filter: { status: "pending", description: entry.completed } });
+        const matches = await c.find({ filter: { status: "pending", description: entry.completed } });
         if (matches.records.length === 1) {
           const match = matches.records[0];
           await c.update({ _id: match._id }, { $set: { status: "completed", end: now(), modified: now() } });
@@ -147,7 +147,7 @@ async function drainSyncQueue(): Promise<void> {
       } else if (entry.subagent_start) {
         const agentName = entry.subagent_start;
         // Query once, not per-entry — avoid O(n²) if multiple subagent_start entries
-        for (const task of c.findAll()) {
+        for (const task of await c.findAll()) {
           if (task.status === "pending" && !task.agent) {
             await c.update({ _id: task._id }, { $set: { agent: agentName, modified: now() } });
           }
@@ -223,15 +223,15 @@ function toTask(record: Record<string, unknown>): Task {
   return { uuid: _id as string, ...rest } as unknown as Task;
 }
 
-function findTask(id: string): Record<string, unknown> | undefined {
+async function findTask(id: string): Promise<Record<string, unknown> | undefined> {
   const c = getCol();
   // Try as UUID/_id
-  const byId = c.findOne(id);
+  const byId = await c.findOne(id);
   if (byId) return byId;
   // Try as numeric ID
   const numId = parseInt(id, 10);
   if (!isNaN(numId)) {
-    const result = c.find({ filter: { id: numId }, limit: 1 });
+    const result = await c.find({ filter: { id: numId }, limit: 1 });
     return result.records[0];
   }
   return undefined;
@@ -244,7 +244,7 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   const c = getCol();
 
   // Generate recurring task instances
-  const allRecords = c.findAll();
+  const allRecords = await c.findAll();
   const allTasks = allRecords.map(toTask);
   let idCounter = 0;
   for (const t of allTasks) { if (t.id > idCounter) idCounter = t.id; }
@@ -269,7 +269,7 @@ export async function exportTasks(_config: EngineConfig, filter: string): Promis
   const filterObj = compileFilter(filter);
   const filtered = Object.keys(filterObj).length === 0
     ? allRecords
-    : c.find({ filter: filterObj, limit: 10000 }).records;
+    : (await c.find({ filter: filterObj, limit: 10000 })).records;
 
   // Ensure urgency on filtered results (find() returns fresh records without urgency)
   if (Object.keys(filterObj).length > 0) {
@@ -339,8 +339,8 @@ export async function modifyTask(
   const c = getCol();
   const filterObj = compileFilter(filter);
   const matches = Object.keys(filterObj).length === 0
-    ? c.findAll()
-    : c.find({ filter: filterObj, limit: 10000 }).records;
+    ? await c.findAll()
+    : (await c.find({ filter: filterObj, limit: 10000 })).records;
 
   if (matches.length === 0) return "No matching tasks.";
 
@@ -399,7 +399,7 @@ export async function taskCommand(
   extraArgs: string[] = [],
 ): Promise<string> {
   const c = getCol();
-  const record = findTask(id);
+  const record = await findTask(id);
   if (!record) return `No task found matching '${id}'.`;
 
   const taskId = record._id as string;
@@ -492,7 +492,7 @@ export async function duplicateTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
-  const record = findTask(id);
+  const record = await findTask(id);
   if (!record) return `No task found matching '${id}'.`;
 
   const c = getCol();
@@ -570,7 +570,7 @@ export async function getUnique(_config: EngineConfig, attribute: string): Promi
   await drainSyncQueue();
   const c = getCol();
   const values = new Set<string>();
-  const records = c.findAll();
+  const records = await c.findAll();
   for (const record of records) {
     if (record.status !== "pending" && record.status !== "recurring") continue;
     if (attribute === "tags") {
@@ -586,7 +586,7 @@ export async function getUnique(_config: EngineConfig, attribute: string): Promi
 // --- Doc operations (blob API) ---
 
 export async function writeDoc(_config: EngineConfig, id: string, content: string): Promise<string> {
-  const record = findTask(id);
+  const record = await findTask(id);
   if (!record) throw new Error(`No task found matching '${id}'`);
   const c = getCol();
   const taskId = record._id as string;
@@ -599,7 +599,7 @@ export async function writeDoc(_config: EngineConfig, id: string, content: strin
 }
 
 export async function readDoc(_config: EngineConfig, id: string): Promise<string | null> {
-  const record = findTask(id);
+  const record = await findTask(id);
   if (!record) throw new Error(`No task found matching '${id}'`);
   const c = getCol();
   try {
@@ -611,7 +611,7 @@ export async function readDoc(_config: EngineConfig, id: string): Promise<string
 }
 
 export async function deleteDoc(_config: EngineConfig, id: string): Promise<string> {
-  const record = findTask(id);
+  const record = await findTask(id);
   if (!record) throw new Error(`No task found matching '${id}'`);
   const c = getCol();
   const taskId = record._id as string;
@@ -631,7 +631,7 @@ export async function archiveTasks(
   const c = getCol();
   const cutoffISO = new Date(Date.now() - olderThanDays * 86400000).toISOString();
   // Use predicate-based archive to handle complex date+status filter
-  const allRecords = c.findAll();
+  const allRecords = await c.findAll();
   const toArchive: string[] = [];
   for (const r of allRecords) {
     if ((r.status === "completed" || r.status === "deleted") && r.end && new Date(r.end as string).getTime() <= new Date(cutoffISO).getTime()) {

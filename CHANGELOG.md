@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 (2026-04-11)
+
+### Changed
+- **Upgraded `@backloghq/agentdb` from 1.1.1 to 1.2.0** — adapts to async Collection read methods (`findOne`, `find`, `findAll`, `count`). All engine read paths now `await` these calls, enabling future disk-backed storage mode.
+- **`findTask()` is now async** — cascades `await` to all callers: `taskCommand`, `writeDoc`, `readDoc`, `deleteDoc`, `duplicateTask`.
+
+### Added
+- **Array indexes on `tags` and `depends`** — uses agentdb's new `arrayIndexes` schema option for O(1) `$contains` lookups. Tag filters (`+bug`, `-old`) and dependency checks are now index-accelerated instead of full-scan.
+
 ## 2.0.2 (2026-04-11)
 
 ### Fixed

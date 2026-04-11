@@ -118,7 +118,7 @@ async function drainSyncQueue() {
                 });
             }
             else if (entry.completed) {
-                const matches = c.find({ filter: { status: "pending", description: entry.completed } });
+                const matches = await c.find({ filter: { status: "pending", description: entry.completed } });
                 if (matches.records.length === 1) {
                     const match = matches.records[0];
                     await c.update({ _id: match._id }, { $set: { status: "completed", end: now(), modified: now() } });
@@ -130,7 +130,7 @@ async function drainSyncQueue() {
             else if (entry.subagent_start) {
                 const agentName = entry.subagent_start;
                 // Query once, not per-entry — avoid O(n²) if multiple subagent_start entries
-                for (const task of c.findAll()) {
+                for (const task of await c.findAll()) {
                     if (task.status === "pending" && !task.agent) {
                         await c.update({ _id: task._id }, { $set: { agent: agentName, modified: now() } });
                     }
@@ -214,16 +214,16 @@ function toTask(record) {
     const { _id, _version, ...rest } = record;
     return { uuid: _id, ...rest };
 }
-function findTask(id) {
+async function findTask(id) {
     const c = getCol();
     // Try as UUID/_id
-    const byId = c.findOne(id);
+    const byId = await c.findOne(id);
     if (byId)
         return byId;
     // Try as numeric ID
     const numId = parseInt(id, 10);
     if (!isNaN(numId)) {
-        const result = c.find({ filter: { id: numId }, limit: 1 });
+        const result = await c.find({ filter: { id: numId }, limit: 1 });
         return result.records[0];
     }
     return undefined;
@@ -233,7 +233,7 @@ export async function exportTasks(_config, filter) {
     await drainSyncQueue();
     const c = getCol();
     // Generate recurring task instances
-    const allRecords = c.findAll();
+    const allRecords = await c.findAll();
     const allTasks = allRecords.map(toTask);
     let idCounter = 0;
     for (const t of allTasks) {
@@ -259,7 +259,7 @@ export async function exportTasks(_config, filter) {
     const filterObj = compileFilter(filter);
     const filtered = Object.keys(filterObj).length === 0
         ? allRecords
-        : c.find({ filter: filterObj, limit: 10000 }).records;
+        : (await c.find({ filter: filterObj, limit: 10000 })).records;
     // Ensure urgency on filtered results (find() returns fresh records without urgency)
     if (Object.keys(filterObj).length > 0) {
         for (const record of filtered) {
@@ -314,8 +314,8 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
     const c = getCol();
     const filterObj = compileFilter(filter);
     const matches = Object.keys(filterObj).length === 0
-        ? c.findAll()
-        : c.find({ filter: filterObj, limit: 10000 }).records;
+        ? await c.findAll()
+        : (await c.find({ filter: filterObj, limit: 10000 })).records;
     if (matches.length === 0)
         return "No matching tasks.";
     let modified = 0;
@@ -381,7 +381,7 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
 }
 export async function taskCommand(_config, id, command, extraArgs = []) {
     const c = getCol();
-    const record = findTask(id);
+    const record = await findTask(id);
     if (!record)
         return `No task found matching '${id}'.`;
     const taskId = record._id;
@@ -458,7 +458,7 @@ export async function logTask(_config, description, attrs, extraArgs = []) {
     return "Task logged.";
 }
 export async function duplicateTask(_config, id, attrs, extraArgs = []) {
-    const record = findTask(id);
+    const record = await findTask(id);
     if (!record)
         return `No task found matching '${id}'.`;
     const c = getCol();
@@ -546,7 +546,7 @@ export async function getUnique(_config, attribute) {
     await drainSyncQueue();
     const c = getCol();
     const values = new Set();
-    const records = c.findAll();
+    const records = await c.findAll();
     for (const record of records) {
         if (record.status !== "pending" && record.status !== "recurring")
             continue;
@@ -562,7 +562,7 @@ export async function getUnique(_config, attribute) {
 }
 // --- Doc operations (blob API) ---
 export async function writeDoc(_config, id, content) {
-    const record = findTask(id);
+    const record = await findTask(id);
     if (!record)
         throw new Error(`No task found matching '${id}'`);
     const c = getCol();
@@ -575,7 +575,7 @@ export async function writeDoc(_config, id, content) {
     return `Doc written for task ${taskId}.`;
 }
 export async function readDoc(_config, id) {
-    const record = findTask(id);
+    const record = await findTask(id);
     if (!record)
         throw new Error(`No task found matching '${id}'`);
     const c = getCol();
@@ -588,7 +588,7 @@ export async function readDoc(_config, id) {
     }
 }
 export async function deleteDoc(_config, id) {
-    const record = findTask(id);
+    const record = await findTask(id);
     if (!record)
         throw new Error(`No task found matching '${id}'`);
     const c = getCol();
@@ -606,7 +606,7 @@ export async function archiveTasks(_config, olderThanDays = 90) {
     const c = getCol();
     const cutoffISO = new Date(Date.now() - olderThanDays * 86400000).toISOString();
     // Use predicate-based archive to handle complex date+status filter
-    const allRecords = c.findAll();
+    const allRecords = await c.findAll();
     const toArchive = [];
     for (const r of allRecords) {
         if ((r.status === "completed" || r.status === "deleted") && r.end && new Date(r.end).getTime() <= new Date(cutoffISO).getTime()) {
