@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0 (2026-04-18)
+
+### Changed
+- **Upgraded `@backloghq/agentdb` from 1.2.1 to 1.3.0** — unlocks persisted schemas with agent context, the schema lifecycle toolset (`db_get_schema`, `db_set_schema`, `db_delete_schema`, `db_diff_schema`, `db_migrate`, `db_infer_schema`), the `$strLen` filter operator, and schema bootstrap via `<dataDir>/schemas/*.json` or `--schemas` CLI flag.
+
+### Added
+- **Agent-facing context on `taskSchema`** — the `tasks` collection now carries a `description`, `instructions`, and per-field `description` values. On first open these auto-persist to `<taskdataRoot>/<project>/meta/tasks.schema.json`, so any agent connecting to the backlog MCP server can call `db_get_schema` and discover the shape + usage guidance of the tasks collection without reading this repo's source.
+- **Schema `version: 1`** declared on `taskSchema` so future schema evolution can be tracked against the persisted file.
+
 ## 2.1.1 (2026-04-11)
 
 ### Fixed

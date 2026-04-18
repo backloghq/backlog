@@ -69,7 +69,7 @@ The `task-planner` agent can be auto-invoked by Claude when someone needs to pla
 
 ## Tools (MCP)
 
-24 tools for full task lifecycle management:
+Tools for full task lifecycle management:
 
 | Tool | Description |
 |------|-------------|
@@ -196,7 +196,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 npm install
 npm run build          # compile TypeScript
 npm run lint           # run ESLint
-npm test               # run tests (189 tests)
+npm test               # run tests
 npm run test:coverage  # run tests with coverage
 npm run dev            # watch mode
 ```
