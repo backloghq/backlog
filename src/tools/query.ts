@@ -29,7 +29,10 @@ export function registerQueryTools(server: McpServer, config: EngineConfig): voi
     safe(async ({ filter }) => {
       const effectiveFilter = filter || "status:pending";
       const tasks = await exportTasks(config, effectiveFilter);
-      return { structuredContent: { tasks } };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(tasks, null, 2) }],
+        structuredContent: { tasks },
+      };
     })
   );
 
@@ -56,7 +59,10 @@ export function registerQueryTools(server: McpServer, config: EngineConfig): voi
           isError: true,
         };
       }
-      return { structuredContent: { tasks: [tasks[0]] } };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(tasks[0], null, 2) }],
+        structuredContent: { tasks: [tasks[0]] },
+      };
     })
   );
 
@@ -80,7 +86,10 @@ export function registerQueryTools(server: McpServer, config: EngineConfig): voi
     safe(async ({ filter }) => {
       const effectiveFilter = filter || "status:pending";
       const count = await countTasks(config, effectiveFilter);
-      return { structuredContent: { count } };
+      return {
+        content: [{ type: "text" as const, text: String(count) }],
+        structuredContent: { count },
+      };
     })
   );
 
@@ -98,7 +107,10 @@ export function registerQueryTools(server: McpServer, config: EngineConfig): voi
     },
     safe(async () => {
       const projects = await getUnique(config, "project");
-      return { structuredContent: { items: projects } };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(projects, null, 2) }],
+        structuredContent: { items: projects },
+      };
     })
   );
 
@@ -116,7 +128,10 @@ export function registerQueryTools(server: McpServer, config: EngineConfig): voi
     },
     safe(async () => {
       const tags = await getUnique(config, "tags");
-      return { structuredContent: { items: tags } };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(tags, null, 2) }],
+        structuredContent: { items: tags },
+      };
     })
   );
 }

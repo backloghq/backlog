@@ -54,7 +54,10 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
       }
 
       const result = await addTask(config, description, attrs, extraArgs);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -77,7 +80,10 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
     },
     safe(async ({ id }) => {
       const result = await taskCommand(config, id, "done");
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -98,7 +104,10 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
     },
     safe(async ({ id }) => {
       const result = await taskCommand(config, id, "delete");
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -120,7 +129,10 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
     },
     safe(async ({ id }) => {
       const result = await taskCommand(config, id, "start");
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -141,7 +153,10 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
     },
     safe(async ({ id }) => {
       const result = await taskCommand(config, id, "stop");
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -182,7 +197,10 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
       }
 
       const result = await logTask(config, description, attrs, extraArgs);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -226,7 +244,10 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
       }
 
       const result = await duplicateTask(config, id, attrs, extraArgs);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 }

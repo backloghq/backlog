@@ -21,7 +21,10 @@ export function registerQueryTools(server, config) {
     }, safe(async ({ filter }) => {
         const effectiveFilter = filter || "status:pending";
         const tasks = await exportTasks(config, effectiveFilter);
-        return { structuredContent: { tasks } };
+        return {
+            content: [{ type: "text", text: JSON.stringify(tasks, null, 2) }],
+            structuredContent: { tasks },
+        };
     }));
     server.registerTool("task_info", {
         title: "Task Info",
@@ -42,7 +45,10 @@ export function registerQueryTools(server, config) {
                 isError: true,
             };
         }
-        return { structuredContent: { tasks: [tasks[0]] } };
+        return {
+            content: [{ type: "text", text: JSON.stringify(tasks[0], null, 2) }],
+            structuredContent: { tasks: [tasks[0]] },
+        };
     }));
     server.registerTool("task_count", {
         title: "Count Tasks",
@@ -58,7 +64,10 @@ export function registerQueryTools(server, config) {
     }, safe(async ({ filter }) => {
         const effectiveFilter = filter || "status:pending";
         const count = await countTasks(config, effectiveFilter);
-        return { structuredContent: { count } };
+        return {
+            content: [{ type: "text", text: String(count) }],
+            structuredContent: { count },
+        };
     }));
     server.registerTool("task_projects", {
         title: "List Projects",
@@ -70,7 +79,10 @@ export function registerQueryTools(server, config) {
         inputSchema: z.object({}),
     }, safe(async () => {
         const projects = await getUnique(config, "project");
-        return { structuredContent: { items: projects } };
+        return {
+            content: [{ type: "text", text: JSON.stringify(projects, null, 2) }],
+            structuredContent: { items: projects },
+        };
     }));
     server.registerTool("task_tags", {
         title: "List Tags",
@@ -82,6 +94,9 @@ export function registerQueryTools(server, config) {
         inputSchema: z.object({}),
     }, safe(async () => {
         const tags = await getUnique(config, "tags");
-        return { structuredContent: { items: tags } };
+        return {
+            content: [{ type: "text", text: JSON.stringify(tags, null, 2) }],
+            structuredContent: { items: tags },
+        };
     }));
 }

@@ -55,7 +55,10 @@ export function registerLifecycleTools(server, config) {
             extraArgs.push(...extra.split(/\s+/).filter(Boolean));
         }
         const result = await addTask(config, description, attrs, extraArgs);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_done", {
         title: "Complete Task",
@@ -72,7 +75,10 @@ export function registerLifecycleTools(server, config) {
         }),
     }, safe(async ({ id }) => {
         const result = await taskCommand(config, id, "done");
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_delete", {
         title: "Delete Task",
@@ -87,7 +93,10 @@ export function registerLifecycleTools(server, config) {
         }),
     }, safe(async ({ id }) => {
         const result = await taskCommand(config, id, "delete");
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_start", {
         title: "Start Task",
@@ -103,7 +112,10 @@ export function registerLifecycleTools(server, config) {
         }),
     }, safe(async ({ id }) => {
         const result = await taskCommand(config, id, "start");
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_stop", {
         title: "Stop Task",
@@ -118,7 +130,10 @@ export function registerLifecycleTools(server, config) {
         }),
     }, safe(async ({ id }) => {
         const result = await taskCommand(config, id, "stop");
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_log", {
         title: "Log Completed Task",
@@ -154,7 +169,10 @@ export function registerLifecycleTools(server, config) {
             extraArgs.push(...extra.split(/\s+/).filter(Boolean));
         }
         const result = await logTask(config, description, attrs, extraArgs);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_duplicate", {
         title: "Duplicate Task",
@@ -195,6 +213,9 @@ export function registerLifecycleTools(server, config) {
             extraArgs.push(...extra.split(/\s+/).filter(Boolean));
         }
         const result = await duplicateTask(config, id, attrs, extraArgs);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
 }
