@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Tool output consistency** — updated `task_doc_write`, `task_doc_read`, `task_doc_delete`, and all tools in `modify.ts` to return a standard `content` array (for LLM visibility) in addition to `structuredContent` (for programmatic use).
+
 ## 2.3.0 (2026-04-19)
 
 ### Added

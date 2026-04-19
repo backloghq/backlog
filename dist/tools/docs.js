@@ -18,7 +18,10 @@ export function registerDocTools(server, config) {
         }),
     }, safe(async ({ id, content }) => {
         const result = await writeDoc(config, id, content);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_doc_read", {
         title: "Read Task Doc",
@@ -38,7 +41,10 @@ export function registerDocTools(server, config) {
                 isError: true,
             };
         }
-        return { structuredContent: { content: doc } };
+        return {
+            content: [{ type: "text", text: doc }],
+            structuredContent: { content: doc },
+        };
     }));
     server.registerTool("task_doc_delete", {
         title: "Delete Task Doc",
@@ -52,6 +58,9 @@ export function registerDocTools(server, config) {
         }),
     }, safe(async ({ id }) => {
         const result = await deleteDoc(config, id);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
 }

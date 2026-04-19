@@ -22,38 +22,44 @@ export function registerArchiveTools(server: McpServer, config: EngineConfig): v
       }),
     },
     safe(async ({ older_than_days }) => {
-      const days = older_than_days ? parseInt(older_than_days, 10) : 90;
+      const days = parseInt(older_than_days || "90", 10);
       const result = await archiveTasks(config, days);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
-  );
+    );
 
-  server.registerTool(
+    server.registerTool(
     "task_archive_list",
     {
       title: "List Archive Segments",
       description:
-        "Return a JSON array of available archive segment paths (e.g. 'archive/archive-2026-Q1.json'). Returns an empty array if no archives exist. " +
-        "Each segment contains tasks archived during that quarter. Use task_archive_load with the period name (e.g. '2026-Q1') to inspect contents. " +
-        "Use task_archive to create new archive segments from old completed/deleted tasks." + LOCAL_NOTE,
+        "Return a JSON array of available archive segment paths (e.g. 'archive/archive-2026-Q1.json'). " +
+        "Returns an empty array if no archives exist. Each segment contains tasks archived during that quarter. " +
+        "Use task_archive_load with the period name (e.g. '2026-Q1') to inspect contents." + LOCAL_NOTE,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: stringArrayOutput,
       inputSchema: z.object({}),
     },
     safe(async () => {
       const segments = listArchiveSegments();
-      return { structuredContent: { items: segments } };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(segments, null, 2) }],
+        structuredContent: { items: segments },
+      };
     })
-  );
+    );
 
-  server.registerTool(
+    server.registerTool(
     "task_archive_load",
     {
       title: "Load Archived Tasks",
       description:
         "Load and return tasks from an archive segment as a read-only JSON array for inspection. " +
         "Errors if the segment is not found — use task_archive_list to discover available segments first. " +
-        "This is view-only; archived tasks cannot be restored to the active database. Archives are cold storage for historical reference." + LOCAL_NOTE,
+        "This is view-only; archived tasks cannot be restored to the active database." + LOCAL_NOTE,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: taskArrayOutput,
       inputSchema: z.object({
@@ -62,7 +68,10 @@ export function registerArchiveTools(server: McpServer, config: EngineConfig): v
     },
     safe(async ({ segment }) => {
       const tasks = await loadArchivedTasks(config, segment);
-      return { structuredContent: { tasks } };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(tasks, null, 2) }],
+        structuredContent: { tasks },
+      };
     })
-  );
-}
+    );
+    }

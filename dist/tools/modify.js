@@ -59,7 +59,10 @@ export function registerModifyTools(server, config) {
             extraArgs.push(...extra.split(/\s+/).filter(Boolean));
         }
         const result = await modifyTask(config, filter, attrs, extraArgs);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_annotate", {
         title: "Annotate Task",
@@ -77,7 +80,10 @@ export function registerModifyTools(server, config) {
         }),
     }, safe(async ({ id, text }) => {
         const result = await taskCommand(config, id, "annotate", [text]);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_denotate", {
         title: "Remove Annotation",
@@ -93,7 +99,10 @@ export function registerModifyTools(server, config) {
         }),
     }, safe(async ({ id, text }) => {
         const result = await taskCommand(config, id, "denotate", [text]);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_undo", {
         title: "Undo",
@@ -107,7 +116,10 @@ export function registerModifyTools(server, config) {
         inputSchema: z.object({}),
     }, safe(async () => {
         const result = await undo();
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_purge", {
         title: "Purge Task",
@@ -122,7 +134,10 @@ export function registerModifyTools(server, config) {
         }),
     }, safe(async ({ id }) => {
         const result = await taskCommand(config, id, "purge");
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
     server.registerTool("task_import", {
         title: "Import Tasks",
@@ -139,6 +154,9 @@ export function registerModifyTools(server, config) {
         }),
     }, safe(async ({ tasks }) => {
         const result = await importTasks(config, tasks);
-        return { structuredContent: { message: result } };
+        return {
+            content: [{ type: "text", text: result }],
+            structuredContent: { message: result },
+        };
     }));
 }

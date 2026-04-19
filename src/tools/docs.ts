@@ -24,7 +24,10 @@ export function registerDocTools(server: McpServer, config: EngineConfig): void 
     },
     safe(async ({ id, content }) => {
       const result = await writeDoc(config, id, content);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -50,7 +53,10 @@ export function registerDocTools(server: McpServer, config: EngineConfig): void 
           isError: true,
         };
       }
-      return { structuredContent: { content: doc } };
+      return {
+        content: [{ type: "text" as const, text: doc }],
+        structuredContent: { content: doc },
+      };
     })
   );
 
@@ -70,7 +76,10 @@ export function registerDocTools(server: McpServer, config: EngineConfig): void 
     },
     safe(async ({ id }) => {
       const result = await deleteDoc(config, id);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 }

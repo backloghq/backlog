@@ -57,7 +57,10 @@ export function registerModifyTools(server: McpServer, config: EngineConfig): vo
       }
 
       const result = await modifyTask(config, filter, attrs, extraArgs);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -81,7 +84,10 @@ export function registerModifyTools(server: McpServer, config: EngineConfig): vo
     },
     safe(async ({ id, text }) => {
       const result = await taskCommand(config, id, "annotate", [text]);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -103,7 +109,10 @@ export function registerModifyTools(server: McpServer, config: EngineConfig): vo
     },
     safe(async ({ id, text }) => {
       const result = await taskCommand(config, id, "denotate", [text]);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -123,7 +132,10 @@ export function registerModifyTools(server: McpServer, config: EngineConfig): vo
     },
     safe(async () => {
       const result = await undo();
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -144,7 +156,10 @@ export function registerModifyTools(server: McpServer, config: EngineConfig): vo
     },
     safe(async ({ id }) => {
       const result = await taskCommand(config, id, "purge");
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 
@@ -169,7 +184,10 @@ export function registerModifyTools(server: McpServer, config: EngineConfig): vo
     },
     safe(async ({ tasks }) => {
       const result = await importTasks(config, tasks);
-      return { structuredContent: { message: result } };
+      return {
+        content: [{ type: "text" as const, text: result }],
+        structuredContent: { message: result },
+      };
     })
   );
 }
