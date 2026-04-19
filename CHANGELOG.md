@@ -3,7 +3,7 @@
 ## 2.3.0 (2026-04-19)
 
 ### Added
-- **Multi-writer support via `BACKLOG_AGENT_ID`** — the engine now supports concurrent access from multiple processes (e.g., Claude Desktop and Gemini CLI) by using AgentDB's `agentId` feature. Each process can have its own WAL stream, avoiding directory write locks and enabling seamless coordination.
+- **Multi-writer support on by default** — the engine now automatically generates a unique `agentId` (e.g., `backlog-laptop-a1b2c3d4`) if `BACKLOG_AGENT_ID` is not provided. This allows multiple processes (Claude, Gemini, etc.) to share the same project data without directory locking issues, making global MCP configuration seamless.
 - **Namespacing support** — added `BACKLOG_NAMESPACE` and `BACKLOG_AUTO_NAMESPACE` to allow partitioning a single data directory into multiple isolated backlogs. This enables sharing a single storage backend (like an S3 bucket or a global folder) while maintaining per-project task isolation at the collection level.
 - **Improved data synchronization** — added `sync()` helper that automatically calls `col.refresh()` and `drainSyncQueue()` before all read and write operations. This ensures that a persistent agent process always sees the latest changes from other agents and any tasks queued by external hooks.
 

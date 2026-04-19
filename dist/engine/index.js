@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import { readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
@@ -29,7 +30,7 @@ export async function getConfig() {
     }
     const result = {
         dataDir,
-        agentId: process.env.BACKLOG_AGENT_ID,
+        agentId: process.env.BACKLOG_AGENT_ID || `backlog-${hostname()}-${randomUUID().split("-")[0]}`,
     };
     if (process.env.BACKLOG_NAMESPACE) {
         result.namespace = process.env.BACKLOG_NAMESPACE;
