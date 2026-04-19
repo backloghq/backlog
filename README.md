@@ -165,12 +165,30 @@ Backlog supports concurrent access from multiple processes (e.g., Claude Desktop
 
 ### Namespacing
 
-If you want to use a single `TASKDATA` directory for multiple projects, you can use namespaces to keep tasks separate:
+If you want to use a single `TASKDATA` directory (like a shared S3 bucket or a global `~/.backlog` folder) for multiple projects, you can use namespaces to keep tasks separate:
 
 1. **Manual**: Set `BACKLOG_NAMESPACE=my-project` to use a specific collection name.
 2. **Automatic**: Set `BACKLOG_AUTO_NAMESPACE=true` to have Backlog automatically derive a collection name from your current working directory (e.g. `my-app-a1b2c3d4`).
 
-Both methods allow multiple projects to share the same storage backend (filesystem or S3) while maintaining isolated backlogs.
+**Example Configuration (`.claude/settings.json`):**
+
+```json
+{
+  "mcpServers": {
+    "backlog": {
+      "command": "node",
+      "args": ["/path/to/backlog/dist/index.js"],
+      "env": {
+        "TASKDATA": "/home/user/.backlog",
+        "BACKLOG_AUTO_NAMESPACE": "true",
+        "BACKLOG_AGENT_ID": "claude-desktop"
+      }
+    }
+  }
+}
+```
+
+Both methods allow multiple projects to share the same storage backend while maintaining isolated, project-specific backlogs.
 
 ### S3 Backend
 
