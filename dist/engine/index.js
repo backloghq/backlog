@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import { readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
@@ -6,11 +7,13 @@ import { AgentDB } from "@backloghq/agentdb";
 import { compileFilter } from "./filter.js";
 import { formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
-import { taskSchema } from "./task-schema.js";
+import { taskSchema, getTaskSchema } from "./task-schema.js";
 export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring"];
 export const VALID_PRIORITIES = ["H", "M", "L"];
 export function deriveProjectSlug(cwd) {
-    const name = basename(cwd).replace(/[^a-zA-Z0-9_-]/g, "-");
+    const name = basename(cwd)
+        .replace(/^[^a-zA-Z0-9]+/, "") // Strip leading non-alphanumeric characters
+        .replace(/[^a-zA-Z0-9_-]/g, "-");
     const hash = createHash("md5").update(cwd).digest("hex").substring(0, 8);
     return `${name}-${hash}`;
 }
@@ -27,7 +30,16 @@ export async function getConfig() {
                 "Set TASKDATA to a project-specific directory, or TASKDATA_ROOT to auto-derive from the working directory.");
         }
     }
-    const result = { dataDir };
+    const result = {
+        dataDir,
+        agentId: process.env.BACKLOG_AGENT_ID || `backlog-${hostname()}-${randomUUID().split("-")[0]}`,
+    };
+    if (process.env.BACKLOG_NAMESPACE) {
+        result.namespace = process.env.BACKLOG_NAMESPACE;
+    }
+    else if (process.env.BACKLOG_AUTO_NAMESPACE === "true") {
+        result.namespace = deriveProjectSlug(process.cwd());
+    }
     if (process.env.BACKLOG_BACKEND === "s3") {
         const bucket = process.env.BACKLOG_S3_BUCKET;
         if (!bucket)
@@ -51,18 +63,19 @@ export async function getConfig() {
 let db = null;
 let col = null;
 let config = null;
-let queueDrained = false;
 export async function ensureSetup(cfg) {
     config = cfg;
+    const name = cfg.namespace || "tasks";
+    const schema = name === "tasks" ? taskSchema : getTaskSchema(name);
     // Reset state for fresh stores (important for tests)
-    taskSchema.counters.clear();
-    queueDrained = false;
+    schema.counters.clear();
     db = new AgentDB(cfg.dataDir, {
         checkpointThreshold: 50,
         backend: cfg.backend,
+        agentId: cfg.agentId,
     });
     await db.init();
-    col = await db.collection(taskSchema);
+    col = await db.collection(schema);
 }
 export async function shutdown() {
     if (db) {
@@ -84,11 +97,15 @@ function getDataDir() {
 function now() {
     return formatDate(new Date());
 }
+/** Refresh the collection to pick up writes from other agents and drain the sync queue. */
+async function sync() {
+    const c = getCol();
+    await c.refresh();
+    await drainSyncQueue();
+}
 // UUID_RE used by filter.ts
 // --- Sync Queue ---
 async function drainSyncQueue() {
-    if (queueDrained)
-        return;
     const dir = getDataDir();
     const queuePath = join(dir, "sync-queue.jsonl");
     let content;
@@ -96,7 +113,6 @@ async function drainSyncQueue() {
         content = await readFile(queuePath, "utf-8");
     }
     catch {
-        queueDrained = true;
         return;
     }
     const lines = content.trim().split("\n").filter(Boolean);
@@ -142,7 +158,6 @@ async function drainSyncQueue() {
         }
     }
     await unlink(queuePath);
-    queueDrained = true;
 }
 // --- Urgency ---
 function buildBlockingIndex(tasks) {
@@ -230,7 +245,7 @@ async function findTask(id) {
 }
 // --- Public API ---
 export async function exportTasks(_config, filter) {
-    await drainSyncQueue();
+    await sync();
     const c = getCol();
     // Generate recurring task instances
     const allRecords = await c.findAll();
@@ -284,6 +299,7 @@ function validatePreInsert(description, attrs) {
     }
 }
 export async function addTask(_config, description, attrs, extraArgs = []) {
+    await sync();
     validatePreInsert(description, attrs);
     const c = getCol();
     const uuid = randomUUID();
@@ -311,6 +327,7 @@ export async function addTask(_config, description, attrs, extraArgs = []) {
     return `Created task ${uuid}.`;
 }
 export async function modifyTask(_config, filter, attrs, extraArgs = []) {
+    await sync();
     const c = getCol();
     const filterObj = compileFilter(filter);
     const matches = Object.keys(filterObj).length === 0
@@ -380,6 +397,7 @@ export async function modifyTask(_config, filter, attrs, extraArgs = []) {
     return `Modified ${modified} task(s).`;
 }
 export async function taskCommand(_config, id, command, extraArgs = []) {
+    await sync();
     const c = getCol();
     const record = await findTask(id);
     if (!record)
@@ -422,6 +440,7 @@ export async function taskCommand(_config, id, command, extraArgs = []) {
     return `Task ${command} completed.`;
 }
 export async function undo() {
+    await sync();
     const c = getCol();
     const undone = await c.undo();
     return undone ? "Undo completed." : "Nothing to undo.";
@@ -431,6 +450,7 @@ export async function countTasks(_config, filter) {
     return tasks.length;
 }
 export async function logTask(_config, description, attrs, extraArgs = []) {
+    await sync();
     if (!description || description.trim().length === 0)
         throw new Error("Description cannot be empty.");
     if (description.length > 500)
@@ -458,6 +478,7 @@ export async function logTask(_config, description, attrs, extraArgs = []) {
     return "Task logged.";
 }
 export async function duplicateTask(_config, id, attrs, extraArgs = []) {
+    await sync();
     const record = await findTask(id);
     if (!record)
         return `No task found matching '${id}'.`;
@@ -501,6 +522,7 @@ export async function duplicateTask(_config, id, attrs, extraArgs = []) {
     return `Task duplicated as ${uuid}.`;
 }
 export async function importTasks(_config, tasksJson) {
+    await sync();
     const c = getCol();
     const tasks = JSON.parse(tasksJson);
     const docs = [];
@@ -543,7 +565,7 @@ export async function importTasks(_config, tasksJson) {
     return `Imported ${docs.length} task(s).`;
 }
 export async function getUnique(_config, attribute) {
-    await drainSyncQueue();
+    await sync();
     const c = getCol();
     const values = new Set();
     const records = await c.findAll();
@@ -562,6 +584,7 @@ export async function getUnique(_config, attribute) {
 }
 // --- Doc operations (blob API) ---
 export async function writeDoc(_config, id, content) {
+    await sync();
     const record = await findTask(id);
     if (!record)
         throw new Error(`No task found matching '${id}'`);
@@ -575,6 +598,7 @@ export async function writeDoc(_config, id, content) {
     return `Doc written for task ${taskId}.`;
 }
 export async function readDoc(_config, id) {
+    await sync();
     const record = await findTask(id);
     if (!record)
         throw new Error(`No task found matching '${id}'`);
@@ -588,6 +612,7 @@ export async function readDoc(_config, id) {
     }
 }
 export async function deleteDoc(_config, id) {
+    await sync();
     const record = await findTask(id);
     if (!record)
         throw new Error(`No task found matching '${id}'`);
@@ -603,6 +628,7 @@ export async function deleteDoc(_config, id) {
 }
 // --- Archive ---
 export async function archiveTasks(_config, olderThanDays = 90) {
+    await sync();
     const c = getCol();
     const cutoffISO = new Date(Date.now() - olderThanDays * 86400000).toISOString();
     // Use predicate-based archive to handle complex date+status filter
@@ -621,6 +647,7 @@ export async function archiveTasks(_config, olderThanDays = 90) {
     return `Archived ${count} task(s) older than ${olderThanDays} days.`;
 }
 export async function loadArchivedTasks(_config, segment) {
+    await sync();
     const c = getCol();
     // Strip path prefix if present (listArchiveSegments returns full paths from opslog)
     const period = segment.replace(/^archive\/archive-/, "").replace(/\.json$/, "");

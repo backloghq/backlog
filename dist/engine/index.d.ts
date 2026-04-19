@@ -5,6 +5,8 @@ export declare const VALID_PRIORITIES: readonly ["H", "M", "L"];
 export interface EngineConfig {
     dataDir: string;
     backend?: StorageBackend;
+    agentId?: string;
+    namespace?: string;
 }
 export declare function deriveProjectSlug(cwd: string): string;
 export declare function getConfig(): Promise<EngineConfig>;

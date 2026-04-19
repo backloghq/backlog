@@ -9,8 +9,10 @@ function resolveDateField(v) {
         return v;
     return formatDate(resolveDate(v)); // throws on invalid date
 }
-export const taskSchema = defineSchema({
-    name: "tasks",
+/**
+ * Task collection schema definition — shared between default and named namespaces.
+ */
+const SCHEMA_DEF = {
     version: 1,
     description: "Persistent tasks for Claude Code agents — survive across sessions so work started by one agent can be picked up by another. Each task has a description, status lifecycle, optional priority, project grouping, dates, tags, dependencies, and cross-session agent ownership.",
     instructions: "Status flow: pending → (start/stop to toggle active work) → completed or deleted. 'recurring' is a template that spawns new pending instances on `recur` pattern. Always set `agent` when a task belongs to a specific agent team member. Use `depends` (array of task UUIDs) to model blocking relationships — virtual tag `+BLOCKED` shows tasks with unresolved dependencies, `+READY` shows tasks that can start now. Dates (`due`, `wait`, `scheduled`, `until`) accept natural-language input ('tomorrow', 'next friday', '2w') and are normalised to ISO strings. `has_doc` indicates an attached markdown document — write via `task_doc_write`.",
@@ -30,7 +32,6 @@ export const taskSchema = defineSchema({
         depends: { type: "string[]", description: "UUIDs of tasks this depends on. Task shows as +BLOCKED until dependencies complete." },
         recur: { type: "string", description: "Recurrence pattern: 'daily', 'weekly', 'weekdays', 'biweekly', 'monthly', 'quarterly', 'yearly', or numeric like '3d', '2w'. Requires `due`." },
         agent: { type: "string", description: "Agent identity for team ownership. E.g. 'explorer', 'planner', 'reviewer'. Set on task creation or via task_modify." },
-        // annotations stored as array of {entry, description} — no schema type constraint (AgentDB allows extra fields)
         start: { type: "string", description: "ISO timestamp when work started (task_start). Cleared by task_stop." },
         end: { type: "string", description: "ISO timestamp when the task completed or was deleted." },
         entry: { type: "string", description: "ISO timestamp when the task was created. Auto-set by beforeInsert." },
@@ -74,10 +75,6 @@ export const taskSchema = defineSchema({
                 return dep && (dep.status === "completed" || dep.status === "deleted");
             });
         },
-        "+BLOCKING": () => {
-            // Blocking status requires scanning all tasks — computed in urgency instead
-            return false;
-        },
         "+WAITING": (t) => t.status === "pending" && !!t.wait && new Date(t.wait) > new Date(),
         "+PENDING": (t) => t.status === "pending",
         "+COMPLETED": (t) => t.status === "completed",
@@ -103,4 +100,13 @@ export const taskSchema = defineSchema({
             return record;
         },
     },
-});
+};
+/** Create a task collection schema with the given name. */
+export function getTaskSchema(name) {
+    return defineSchema({
+        name,
+        ...SCHEMA_DEF,
+    });
+}
+/** Default task collection schema (named "tasks"). */
+export const taskSchema = getTaskSchema("tasks");
