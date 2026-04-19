@@ -9,7 +9,7 @@ import type { Task, Annotation } from "./types.js";
 import { compileFilter } from "./filter.js";
 import { formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
-import { taskSchema } from "./task-schema.js";
+import { taskSchema, getTaskSchema } from "./task-schema.js";
 
 export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring"] as const;
 export const VALID_PRIORITIES = ["H", "M", "L"] as const;
@@ -18,6 +18,7 @@ export interface EngineConfig {
   dataDir: string;
   backend?: StorageBackend;
   agentId?: string;
+  namespace?: string;
 }
 
 export function deriveProjectSlug(cwd: string): string {
@@ -47,6 +48,12 @@ export async function getConfig(): Promise<EngineConfig> {
     agentId: process.env.BACKLOG_AGENT_ID,
   };
 
+  if (process.env.BACKLOG_NAMESPACE) {
+    result.namespace = process.env.BACKLOG_NAMESPACE;
+  } else if (process.env.BACKLOG_AUTO_NAMESPACE === "true") {
+    result.namespace = deriveProjectSlug(process.cwd());
+  }
+
   if (process.env.BACKLOG_BACKEND === "s3") {
     const bucket = process.env.BACKLOG_S3_BUCKET;
     if (!bucket) throw new Error("BACKLOG_S3_BUCKET is required when BACKLOG_BACKEND=s3");
@@ -75,15 +82,18 @@ let config: EngineConfig | null = null;
 
 export async function ensureSetup(cfg: EngineConfig): Promise<void> {
   config = cfg;
+  const name = cfg.namespace || "tasks";
+  const schema = name === "tasks" ? taskSchema : getTaskSchema(name);
+
   // Reset state for fresh stores (important for tests)
-  taskSchema.counters.clear();
+  schema.counters.clear();
   db = new AgentDB(cfg.dataDir, {
     checkpointThreshold: 50,
     backend: cfg.backend,
     agentId: cfg.agentId,
   });
   await db.init();
-  col = await db.collection(taskSchema);
+  col = await db.collection(schema);
 }
 
 export async function shutdown(): Promise<void> {

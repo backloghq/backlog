@@ -149,6 +149,8 @@ Each project gets its own task data automatically. When used as a plugin, task d
 |----------|-------------|
 | `TASKDATA` | Explicit path to task data directory (overrides auto-derivation) |
 | `TASKDATA_ROOT` | Root directory for auto-derived per-project task data |
+| `BACKLOG_NAMESPACE` | Explicit collection name (default: `tasks`) |
+| `BACKLOG_AUTO_NAMESPACE` | Set to `true` to derive collection name from CWD |
 | `BACKLOG_AGENT_ID` | Agent ID for multi-writer support (Claude, Gemini, etc.) |
 | `BACKLOG_BACKEND` | Storage backend: omit for filesystem (default), `s3` for Amazon S3 |
 | `BACKLOG_S3_BUCKET` | S3 bucket name (required when `BACKLOG_BACKEND=s3`) |
@@ -160,6 +162,15 @@ Backlog supports concurrent access from multiple processes (e.g., Claude Desktop
 1. Assign a unique `BACKLOG_AGENT_ID` to each process (e.g., `claude`, `gemini`).
 2. When an agent ID is set, the engine uses per-agent write logs, avoiding file locks.
 3. Each process automatically calls `refresh()` before operations to pick up changes from other agents.
+
+### Namespacing
+
+If you want to use a single `TASKDATA` directory for multiple projects, you can use namespaces to keep tasks separate:
+
+1. **Manual**: Set `BACKLOG_NAMESPACE=my-project` to use a specific collection name.
+2. **Automatic**: Set `BACKLOG_AUTO_NAMESPACE=true` to have Backlog automatically derive a collection name from your current working directory (e.g. `my-app-a1b2c3d4`).
+
+Both methods allow multiple projects to share the same storage backend (filesystem or S3) while maintaining isolated backlogs.
 
 ### S3 Backend
 
