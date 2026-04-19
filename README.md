@@ -149,9 +149,17 @@ Each project gets its own task data automatically. When used as a plugin, task d
 |----------|-------------|
 | `TASKDATA` | Explicit path to task data directory (overrides auto-derivation) |
 | `TASKDATA_ROOT` | Root directory for auto-derived per-project task data |
+| `BACKLOG_AGENT_ID` | Agent ID for multi-writer support (Claude, Gemini, etc.) |
 | `BACKLOG_BACKEND` | Storage backend: omit for filesystem (default), `s3` for Amazon S3 |
 | `BACKLOG_S3_BUCKET` | S3 bucket name (required when `BACKLOG_BACKEND=s3`) |
 | `BACKLOG_S3_REGION` | AWS region (optional if using default credentials) |
+
+### Multi-Writer Support
+
+Backlog supports concurrent access from multiple processes (e.g., Claude Desktop and Gemini CLI) sharing the same data. To enable this:
+1. Assign a unique `BACKLOG_AGENT_ID` to each process (e.g., `claude`, `gemini`).
+2. When an agent ID is set, the engine uses per-agent write logs, avoiding file locks.
+3. Each process automatically calls `refresh()` before operations to pick up changes from other agents.
 
 ### S3 Backend
 

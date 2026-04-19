@@ -39,7 +39,9 @@ Claude Code / Agent Teams
 - **TypeScript** — Zod schemas give explicit input validation (important when inputs come from LLMs), strong type safety, and the TS MCP SDK is the most mature.
 - **stdio transport** — standard for Claude Code MCP servers, zero network config.
 - **Native engine on AgentDB** — The engine uses [@backloghq/agentdb](../agentdb) with `defineSchema()` for typed validation, auto-increment IDs, date resolution, virtual filters, and computed fields. AgentDB uses opslog for crash-safe storage.
+- **Multi-writer mode** — Backlog supports concurrent access from multiple processes (e.g., Claude Desktop and Gemini CLI) sharing the same `TASKDATA`. Each process should be assigned a unique `BACKLOG_AGENT_ID`. This enables per-agent WAL files, avoiding write contention and file locks.
 - **AgentDB storage** — Append-only operation log with in-memory materialized state. Supports undo, batched writes, blob storage for docs, and checkpoint-based recovery. Data lives in the project's `TASKDATA` directory. S3 backend supported via `@backloghq/opslog-s3`.
+- **Automatic synchronization** — The `sync()` helper automatically calls `col.refresh()` to pick up writes from other agents and `drainSyncQueue()` to process tasks from external hooks. It is called before every read and write operation.
 - **No persistent server state** — all state lives in the opslog data files. The MCP server is stateless.
 - **Per-project isolation** — each project gets its own `TASKDATA` directory. No shared backlog, no filter scoping — isolation at the filesystem level. Mandatory `TASKDATA` env var prevents accidental writes to the wrong project.
 
@@ -153,13 +155,13 @@ The `task-planner` agent (`agents/task-planner.md`) is auto-invokable by Claude 
 | `TaskCompleted` | `sync-task-completed.sh` | Queues task completions for sync |
 | `SubagentStart` | `sync-subagent-start.sh` | Queues agent assignment for unassigned tasks |
 
-Hooks use a sync-queue pattern: shell scripts write to `sync-queue.jsonl`, the engine drains the queue on the next read operation. This avoids concurrent write issues between hook processes and the MCP server.
+Hooks use a sync-queue pattern: shell scripts write to `sync-queue.jsonl`, and the engine's `sync()` helper (called before all operations) drains the queue. This avoids concurrent write issues between hook processes and the MCP server.
 
 ## Engine Internals
 
 ### Storage
 
-The engine uses [opslog](../opslog), an append-only operation log. Each write (set/delete) appends to the log. The full state is materialized in memory on startup by replaying the log. Periodic checkpoints compact the log for faster recovery.
+The engine uses [opslog](../opslog), an append-only operation log. Each write (set/delete) appends to the log. The full state is materialized in memory on startup by replaying the log. Periodic checkpoints compact the log for faster recovery. Multi-writer mode uses per-agent logs (e.g., `ops/agent-<id>-<ts>.jsonl`) to avoid write contention.
 
 ### Filter Compilation
 
@@ -194,6 +196,7 @@ Tasks get a stable, monotonically incrementing numeric ID assigned at creation t
 
 - `TASKDATA` — explicit path to project-specific data directory. Takes precedence over `TASKDATA_ROOT`. When using S3 backend, this becomes the key prefix in the bucket.
 - `TASKDATA_ROOT` — root directory for auto-derived per-project data. Server creates `<root>/<project-slug>/` based on CWD.
+- `BACKLOG_AGENT_ID` — Agent ID for multi-writer support (Claude, Gemini, etc.). Enables concurrent access without file locks.
 - One of `TASKDATA` or `TASKDATA_ROOT` is required. Server refuses to start without either.
 - `BACKLOG_BACKEND` — storage backend. Omit for filesystem (default), set to `s3` for Amazon S3.
 - `BACKLOG_S3_BUCKET` — S3 bucket name (required when `BACKLOG_BACKEND=s3`).

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.0 (2026-04-19)
+
+### Added
+- **Multi-writer support via `BACKLOG_AGENT_ID`** — the engine now supports concurrent access from multiple processes (e.g., Claude Desktop and Gemini CLI) by using AgentDB's `agentId` feature. Each process can have its own WAL stream, avoiding directory write locks and enabling seamless coordination.
+- **Improved data synchronization** — added `sync()` helper that automatically calls `col.refresh()` and `drainSyncQueue()` before all read and write operations. This ensures that a persistent agent process always sees the latest changes from other agents and any tasks queued by external hooks.
+
+### Changed
+- **Removed `queueDrained` optimization** — the sync queue is now always checked during `sync()` to ensure reliable processing of tasks created by hooks in long-running sessions.
+
 ## 2.2.0 (2026-04-18)
 
 ### Changed

@@ -12,7 +12,7 @@
       "name": "backlog",
       "source": "./",
       "description": "Persistent, cross-session task management for Claude Code. Agent coordination, doc-driven development, exposed as MCP tools and skills.",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "author": {
         "name": "BacklogHQ"
       },

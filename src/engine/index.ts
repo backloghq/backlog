@@ -17,6 +17,7 @@ export const VALID_PRIORITIES = ["H", "M", "L"] as const;
 export interface EngineConfig {
   dataDir: string;
   backend?: StorageBackend;
+  agentId?: string;
 }
 
 export function deriveProjectSlug(cwd: string): string {
@@ -41,7 +42,10 @@ export async function getConfig(): Promise<EngineConfig> {
     }
   }
 
-  const result: EngineConfig = { dataDir };
+  const result: EngineConfig = {
+    dataDir,
+    agentId: process.env.BACKLOG_AGENT_ID,
+  };
 
   if (process.env.BACKLOG_BACKEND === "s3") {
     const bucket = process.env.BACKLOG_S3_BUCKET;
@@ -68,16 +72,15 @@ export async function getConfig(): Promise<EngineConfig> {
 let db: AgentDB | null = null;
 let col: Collection | null = null;
 let config: EngineConfig | null = null;
-let queueDrained = false;
 
 export async function ensureSetup(cfg: EngineConfig): Promise<void> {
   config = cfg;
   // Reset state for fresh stores (important for tests)
   taskSchema.counters.clear();
-  queueDrained = false;
   db = new AgentDB(cfg.dataDir, {
     checkpointThreshold: 50,
     backend: cfg.backend,
+    agentId: cfg.agentId,
   });
   await db.init();
   col = await db.collection(taskSchema);
@@ -105,19 +108,24 @@ function now(): string {
   return formatDate(new Date());
 }
 
+/** Refresh the collection to pick up writes from other agents and drain the sync queue. */
+async function sync(): Promise<void> {
+  const c = getCol();
+  await c.refresh();
+  await drainSyncQueue();
+}
+
 // UUID_RE used by filter.ts
 
 // --- Sync Queue ---
 
 async function drainSyncQueue(): Promise<void> {
-  if (queueDrained) return;
   const dir = getDataDir();
   const queuePath = join(dir, "sync-queue.jsonl");
   let content: string;
   try {
     content = await readFile(queuePath, "utf-8");
   } catch {
-    queueDrained = true;
     return;
   }
   const lines = content.trim().split("\n").filter(Boolean);
@@ -158,7 +166,6 @@ async function drainSyncQueue(): Promise<void> {
     }
   }
   await unlink(queuePath);
-  queueDrained = true;
 }
 
 // --- Urgency ---
@@ -240,7 +247,7 @@ async function findTask(id: string): Promise<Record<string, unknown> | undefined
 // --- Public API ---
 
 export async function exportTasks(_config: EngineConfig, filter: string): Promise<Task[]> {
-  await drainSyncQueue();
+  await sync();
   const c = getCol();
 
   // Generate recurring task instances
@@ -301,6 +308,7 @@ export async function addTask(
   attrs: Record<string, string | boolean>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  await sync();
   validatePreInsert(description, attrs);
   const c = getCol();
   const uuid = randomUUID();
@@ -336,6 +344,7 @@ export async function modifyTask(
   attrs: Record<string, string | boolean>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  await sync();
   const c = getCol();
   const filterObj = compileFilter(filter);
   const matches = Object.keys(filterObj).length === 0
@@ -398,6 +407,7 @@ export async function taskCommand(
   command: string,
   extraArgs: string[] = [],
 ): Promise<string> {
+  await sync();
   const c = getCol();
   const record = await findTask(id);
   if (!record) return `No task found matching '${id}'.`;
@@ -442,6 +452,7 @@ export async function taskCommand(
 }
 
 export async function undo(): Promise<string> {
+  await sync();
   const c = getCol();
   const undone = await c.undo();
   return undone ? "Undo completed." : "Nothing to undo.";
@@ -458,6 +469,7 @@ export async function logTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  await sync();
   if (!description || description.trim().length === 0) throw new Error("Description cannot be empty.");
   if (description.length > 500) throw new Error("Description must be under 500 characters.");
 
@@ -492,6 +504,7 @@ export async function duplicateTask(
   attrs: Record<string, string>,
   extraArgs: string[] = [],
 ): Promise<string> {
+  await sync();
   const record = await findTask(id);
   if (!record) return `No task found matching '${id}'.`;
 
@@ -533,6 +546,7 @@ export async function duplicateTask(
 }
 
 export async function importTasks(_config: EngineConfig, tasksJson: string): Promise<string> {
+  await sync();
   const c = getCol();
   const tasks = JSON.parse(tasksJson) as Array<Record<string, unknown>>;
 
@@ -567,7 +581,7 @@ export async function importTasks(_config: EngineConfig, tasksJson: string): Pro
 }
 
 export async function getUnique(_config: EngineConfig, attribute: string): Promise<string[]> {
-  await drainSyncQueue();
+  await sync();
   const c = getCol();
   const values = new Set<string>();
   const records = await c.findAll();
@@ -586,6 +600,7 @@ export async function getUnique(_config: EngineConfig, attribute: string): Promi
 // --- Doc operations (blob API) ---
 
 export async function writeDoc(_config: EngineConfig, id: string, content: string): Promise<string> {
+  await sync();
   const record = await findTask(id);
   if (!record) throw new Error(`No task found matching '${id}'`);
   const c = getCol();
@@ -599,6 +614,7 @@ export async function writeDoc(_config: EngineConfig, id: string, content: strin
 }
 
 export async function readDoc(_config: EngineConfig, id: string): Promise<string | null> {
+  await sync();
   const record = await findTask(id);
   if (!record) throw new Error(`No task found matching '${id}'`);
   const c = getCol();
@@ -611,6 +627,7 @@ export async function readDoc(_config: EngineConfig, id: string): Promise<string
 }
 
 export async function deleteDoc(_config: EngineConfig, id: string): Promise<string> {
+  await sync();
   const record = await findTask(id);
   if (!record) throw new Error(`No task found matching '${id}'`);
   const c = getCol();
@@ -628,6 +645,7 @@ export async function archiveTasks(
   _config: EngineConfig,
   olderThanDays: number = 90,
 ): Promise<string> {
+  await sync();
   const c = getCol();
   const cutoffISO = new Date(Date.now() - olderThanDays * 86400000).toISOString();
   // Use predicate-based archive to handle complex date+status filter
@@ -648,6 +666,7 @@ export async function loadArchivedTasks(
   _config: EngineConfig,
   segment: string,
 ): Promise<Task[]> {
+  await sync();
   const c = getCol();
   // Strip path prefix if present (listArchiveSegments returns full paths from opslog)
   const period = segment.replace(/^archive\/archive-/, "").replace(/\.json$/, "");
