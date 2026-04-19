@@ -11,7 +11,9 @@ import { taskSchema, getTaskSchema } from "./task-schema.js";
 export const VALID_STATUSES = ["pending", "completed", "deleted", "recurring"];
 export const VALID_PRIORITIES = ["H", "M", "L"];
 export function deriveProjectSlug(cwd) {
-    const name = basename(cwd).replace(/[^a-zA-Z0-9_-]/g, "-");
+    const name = basename(cwd)
+        .replace(/^[^a-zA-Z0-9]+/, "") // Strip leading non-alphanumeric characters
+        .replace(/[^a-zA-Z0-9_-]/g, "-");
     const hash = createHash("md5").update(cwd).digest("hex").substring(0, 8);
     return `${name}-${hash}`;
 }

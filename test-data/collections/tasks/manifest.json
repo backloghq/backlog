@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "currentSnapshot": "snapshots/snap-1776615657110.jsonl",
+  "activeOps": "ops/agent-backlog-thor-6c7139fb-1776615657111.jsonl",
+  "archiveSegments": [],
+  "stats": {
+    "activeRecords": 0,
+    "archivedRecords": 0,
+    "opsCount": 0,
+    "created": "2026-04-19T16:20:57.111Z",
+    "lastCheckpoint": "2026-04-19T16:20:57.111Z"
+  },
+  "activeAgentOps": {
+    "backlog-thor-6c7139fb": "ops/agent-backlog-thor-6c7139fb-1776615657111.jsonl"
+  }
+}
