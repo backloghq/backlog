@@ -10,6 +10,9 @@
 ### Changed
 - **Removed `queueDrained` optimization** — the sync queue is now always checked during `sync()` to ensure reliable processing of tasks created by hooks in long-running sessions.
 
+### Fixed
+- **Startup crash in hidden directories** — ensured that auto-derived project slugs always start with an alphanumeric character, preventing validation errors when starting in directories like `.gemini`.
+
 ## 2.2.0 (2026-04-18)
 
 ### Changed
