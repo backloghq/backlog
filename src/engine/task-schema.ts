@@ -22,7 +22,7 @@ const SCHEMA_DEF = {
 
   fields: {
     id: { type: "autoIncrement" as const, description: "Stable short numeric ID for humans (1, 2, 3...). UUIDs are the primary key; this is for CLI/display." },
-    description: { type: "string" as const, required: true, maxLength: 500, description: "Free-text task description. First line shown in listings; can be multi-line." },
+    description: { type: "string" as const, required: true, maxLength: 500, searchable: true, description: "Free-text task description. First line shown in listings; can be multi-line." },
     status: { type: "enum" as const, values: ["pending", "completed", "deleted", "recurring"], default: "pending", description: "Lifecycle state. 'recurring' is a template that generates pending instances on its `recur` schedule." },
     priority: { type: "enum" as const, values: ["H", "M", "L"], description: "H=high/urgent, M=medium/normal, L=low/backlog. Affects urgency score and default sort order." },
     project: { type: "string" as const, pattern: /^[a-zA-Z0-9_-]+$/, description: "Project name for grouping (alphanumeric, hyphens, underscores). E.g. 'backend', 'auth-refactor'." },
