@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createHash } from "node:crypto";
-import { AgentDB } from "@backloghq/agentdb";
+import { AgentDB, LegacyTextIndexError } from "@backloghq/agentdb";
 import { compileFilter } from "./filter.js";
 import { formatDate } from "./dates.js";
 import { generateInstances } from "./recurrence.js";
@@ -75,7 +75,20 @@ export async function ensureSetup(cfg) {
         agentId: cfg.agentId,
     });
     await db.init();
-    col = await db.collection(schema);
+    try {
+        col = await db.collection(schema);
+    }
+    catch (e) {
+        if (e instanceof LegacyTextIndexError) {
+            console.error(`backlog: migrating legacy v1.4 text index for collection '${name}'…`);
+            const count = await db.rebuildTextIndex(name);
+            console.error(`backlog: rebuilt text index (${count} docs).`);
+            col = await db.collection(schema);
+        }
+        else {
+            throw e;
+        }
+    }
 }
 export async function shutdown() {
     if (db) {

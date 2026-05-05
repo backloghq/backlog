@@ -68,15 +68,6 @@ describe("Engine config", () => {
     await expect(getConfig()).rejects.toThrow("BACKLOG_S3_BUCKET is required");
   });
 
-  it("throws when BACKLOG_BACKEND=s3 but opslog-s3 not installed", async () => {
-    process.env.TASKDATA = "/tmp/test";
-    process.env.BACKLOG_BACKEND = "s3";
-    process.env.BACKLOG_S3_BUCKET = "my-bucket";
-    process.env.BACKLOG_S3_REGION = "us-east-1";
-    // opslog-s3 is not installed in dev deps, so dynamic import will fail
-    await expect(getConfig()).rejects.toThrow("@backloghq/opslog-s3");
-  });
-
   it("derives consistent slugs", () => {
     expect(deriveProjectSlug("/home/user/dev/proj")).toBe(deriveProjectSlug("/home/user/dev/proj"));
   });

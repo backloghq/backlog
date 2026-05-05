@@ -2,8 +2,16 @@
 
 ## [Unreleased]
 
+## 2.4.0 (2026-05-05)
+
 ### Changed
-- **Tool output consistency** — updated `task_doc_write`, `task_doc_read`, `task_doc_delete`, and all tools in `modify.ts` to return a standard `content` array (for LLM visibility) in addition to `structuredContent` (for programmatic use).
+- **Upgraded `@backloghq/agentdb` from 1.3.0 to 2.0.0** — agentdb's BM25 backend was replaced with `@backloghq/termlog` (segment-based LSM). The old 256 MB / ~25–30K-doc text-index ceiling is gone, BM25 scores are now stable across close/reopen, and S3-backed text indexes are wired automatically when the opslog backend is S3.
+- **Bumped optional `@backloghq/opslog-s3` peer from `^0.1.1` to `^0.4.1`** to match the version range agentdb 2.0 ships against.
+
+### Added
+- **One-time migration of legacy v1.4 text index** — `ensureSetup()` now catches `LegacyTextIndexError` on first open, calls `db.rebuildTextIndex(name)` to rebuild the BM25 index in termlog format, and reopens the collection. Logs progress to stderr. Existing 2.3.x users upgrading to 2.4 will see a one-line migration message on first launch.
+- **Optional `@backloghq/termlog-s3` peer dependency (`^0.1.0`)** — install alongside `@backloghq/opslog-s3` to enable text search on the S3 backend. agentdb auto-wires it when both are present.
+- **Schema-projected BM25 indexing** — `searchable: true` declared on `description` only. Previously the schema had `textSearch: true` without per-field flags, so termlog indexed every string field including UUIDs (`parent`), ISO timestamps (`start`, `end`, `entry`, `modified`), and exact-match identifiers (`agent`, `project`, `recur`). That bloated the index and polluted BM25 scores. Exact-match queries (`project:X`, `agent:Y`, `id:N`) and array indexes (`+tag`, `+depends`) already cover those fields, so only `description` needs to be in the BM25 corpus.
 
 ## 2.3.0 (2026-04-19)
 
