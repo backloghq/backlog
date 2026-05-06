@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## 2.4.1 (2026-05-06)
+
+### Changed
+- **Bumped `@backloghq/agentdb` from `^2.0.0` to `^2.1.1`** — purely additive upstream release. Backlog inherits hardening on `rebuildTextIndex` (single-flight guard, atomic snapshot-then-swap with crash recovery, post-loop delta scan capturing concurrent writes during the rebuild), which strengthens the v1.4 → v2.0 text-index migration path used by `ensureSetup()`. No code changes required; all new agentdb 2.1 knobs default to v2.0 behaviour.
+
 ## 2.4.0 (2026-05-05)
 
 ### Changed
