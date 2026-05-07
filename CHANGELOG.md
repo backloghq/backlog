@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## 2.4.2 (2026-05-07)
+
+### Changed
+- **Bumped `@backloghq/agentdb` from `^2.1.1` to `^2.2.1`** — backlog inherits agentdb 2.2.0's bloom-into-planner short-circuit, durable composite/bloom JSON sidecars, HNSW graph persistence hardening (`persistEvery`, atomic snapshot torn-write fix), and 2.2.1's MCP CORS fix (`MCP-Protocol-Version` allowed, `Mcp-Session-Id` exposed) plus the S3 disk-mode first-open ENOENT workaround. The 2.2.1 breaking changes (`db_archive_list` / `db_import` MCP-tool return shapes, `db.import()` library shape) do not touch backlog: backlog calls `Collection.listArchiveSegments()` directly (still `string[]`) and uses `Collection.insertMany()` rather than `db.import()`. No code changes required.
+
 ## 2.4.1 (2026-05-06)
 
 ### Changed
