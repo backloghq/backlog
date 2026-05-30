@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { safe } from "../helpers.js";
-import { confirmationOutput, docOutput, LOCAL_NOTE } from "../schemas.js";
+import { confirmationOutput, docOutput, LOCAL_NOTE, VERIFY_ID_NOTE } from "../schemas.js";
 import { writeDoc, readDoc, deleteDoc } from "../engine/index.js";
 export function registerDocTools(server, config) {
     server.registerTool("task_doc_write", {
@@ -9,7 +9,7 @@ export function registerDocTools(server, config) {
             "Each task has at most one document; writing replaces any existing doc content. Errors if the task is not found. " +
             "Automatically adds +doc tag and has_doc:true to the task, so docs are discoverable via task_list filter:'+doc'. " +
             "This operation can be reversed with task_undo (restores previous doc state). " +
-            "For short notes, use task_annotate instead. To read the doc, use task_doc_read. To remove it, use task_doc_delete." + LOCAL_NOTE,
+            "For short notes, use task_annotate instead. To read the doc, use task_doc_read. To remove it, use task_doc_delete." + VERIFY_ID_NOTE + LOCAL_NOTE,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         outputSchema: confirmationOutput,
         inputSchema: z.object({
@@ -50,7 +50,7 @@ export function registerDocTools(server, config) {
         title: "Delete Task Doc",
         description: "Remove the markdown document attached to a task. Returns a confirmation on success. Errors if the task is not found. " +
             "Clears the +doc tag and has_doc field. The document content is permanently deleted and cannot be recovered. " +
-            "Calling on a task with no document is a no-op. To update a document instead of removing it, use task_doc_write." + LOCAL_NOTE,
+            "Calling on a task with no document is a no-op. To update a document instead of removing it, use task_doc_write." + VERIFY_ID_NOTE + LOCAL_NOTE,
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
         outputSchema: confirmationOutput,
         inputSchema: z.object({

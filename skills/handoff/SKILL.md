@@ -9,9 +9,9 @@ Prepare context for the next session so work can continue seamlessly.
 
 ## Process
 
-1. **Review active tasks** — call `task_list` with filter `+ACTIVE` to find tasks that were being worked on. For each:
+1. **Review active tasks** — call `task_list` with filter `+ACTIVE` to find tasks that were being worked on. Use the UUIDs from that response for the calls below; do not rely on UUIDs you remember from earlier in the session. For each task in the result:
    - Use `task_annotate` to record what was accomplished and what remains
-   - Use `task_stop` to mark them as no longer active
+   - Use `task_stop` to mark it as no longer active
 
 2. **Review pending tasks** — call `task_list` with filter `status:pending` to see the full backlog. Note any tasks whose status has changed based on work done this session.
 

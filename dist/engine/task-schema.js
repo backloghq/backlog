@@ -20,7 +20,7 @@ const SCHEMA_DEF = {
     textSearch: true,
     fields: {
         id: { type: "autoIncrement", description: "Stable short numeric ID for humans (1, 2, 3...). UUIDs are the primary key; this is for CLI/display." },
-        description: { type: "string", required: true, maxLength: 500, searchable: true, description: "Free-text task description. First line shown in listings; can be multi-line." },
+        description: { type: "string", required: true, maxLength: 500, searchable: true, description: "Free-text task description (max 500 chars). One-line summary of what needs doing — used in listings, BM25 search, and standups. For acceptance criteria, requirements, technical context, or anything longer than a sentence or two, keep this short and attach a markdown spec via task_doc_write." },
         status: { type: "enum", values: ["pending", "completed", "deleted", "recurring"], default: "pending", description: "Lifecycle state. 'recurring' is a template that generates pending instances on its `recur` schedule." },
         priority: { type: "enum", values: ["H", "M", "L"], description: "H=high/urgent, M=medium/normal, L=low/backlog. Affects urgency score and default sort order." },
         project: { type: "string", pattern: /^[a-zA-Z0-9_-]+$/, description: "Project name for grouping (alphanumeric, hyphens, underscores). E.g. 'backend', 'auth-refactor'." },

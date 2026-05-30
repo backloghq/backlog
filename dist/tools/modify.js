@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { safe, parseTags } from "../helpers.js";
-import { confirmationOutput, LOCAL_NOTE } from "../schemas.js";
+import { confirmationOutput, LOCAL_NOTE, VERIFY_ID_NOTE } from "../schemas.js";
 import { modifyTask, taskCommand, undo, importTasks } from "../engine/index.js";
 export function registerModifyTools(server, config) {
     server.registerTool("task_modify", {
@@ -10,12 +10,12 @@ export function registerModifyTools(server, config) {
             "Returns 'Modified N task(s).' on success, or 'No matching tasks.' if the filter matches nothing. " +
             "Errors if description exceeds 500 chars, priority is invalid, or dates are unparseable. " +
             "Each modification can be reversed with task_undo (one undo per modified task). " +
-            "Use task_done/task_delete/task_start/task_stop for status changes instead." + LOCAL_NOTE,
+            "Use task_done/task_delete/task_start/task_stop for status changes instead." + VERIFY_ID_NOTE + LOCAL_NOTE,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
         outputSchema: confirmationOutput,
         inputSchema: z.object({
             filter: z.string().describe("Filter to select tasks. Can be a numeric ID ('1'), UUID, or filter expression ('project:backend priority:H'). Matches may update multiple tasks."),
-            description: z.string().optional().describe("New description text (max 500 chars). Only set if you want to change it."),
+            description: z.string().optional().describe("New description text (max 500 chars). Only set if you want to change it. For longer content, leave this short and call task_doc_write to attach a markdown spec."),
             project: z.string().optional().describe("New project name. Pass empty string to clear."),
             tags: z.string().optional().describe("Tags to add (+) or remove (-). E.g. '+frontend,+urgent' or '-old,+new'. Prefix with + to add, - to remove. Without prefix, tags are added."),
             priority: z.enum(["H", "M", "L", ""]).optional().describe("New priority. Pass empty string to clear priority entirely."),
@@ -71,7 +71,7 @@ export function registerModifyTools(server, config) {
             "Multiple annotations can be added to the same task; each is stored with its timestamp. " +
             "Adding the same text twice creates duplicate annotations. This operation can be reversed with task_undo. " +
             "For longer structured content (specs, designs, context docs), use task_doc_write instead. " +
-            "To remove an annotation, use task_denotate with the exact text (use task_info to see existing annotations first)." + LOCAL_NOTE,
+            "To remove an annotation, use task_denotate with the exact text (use task_info to see existing annotations first)." + VERIFY_ID_NOTE + LOCAL_NOTE,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
         outputSchema: confirmationOutput,
         inputSchema: z.object({
@@ -90,7 +90,7 @@ export function registerModifyTools(server, config) {
         description: "Remove a specific annotation from a task by exact text match (case-sensitive). " +
             "Returns a confirmation on success. Errors if the task is not found or no annotation matches the given text. " +
             "Use task_info first to see all annotations on a task and get the exact text to match. " +
-            "This operation can be reversed with task_undo. To add annotations, use task_annotate." + LOCAL_NOTE,
+            "This operation can be reversed with task_undo. To add annotations, use task_annotate." + VERIFY_ID_NOTE + LOCAL_NOTE,
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         outputSchema: confirmationOutput,
         inputSchema: z.object({
@@ -126,7 +126,7 @@ export function registerModifyTools(server, config) {
         description: "Permanently and irreversibly remove a deleted task from the database. Returns a confirmation on success. " +
             "Errors if the task is not found or is not in 'deleted' status — use task_delete first to soft-delete, then task_purge to erase. " +
             "This cannot be undone — the task data, annotations, and any attached document are permanently erased. " +
-            "For bulk cleanup of old tasks, use task_archive instead (which preserves data in cold storage)." + LOCAL_NOTE,
+            "For bulk cleanup of old tasks, use task_archive instead (which preserves data in cold storage)." + VERIFY_ID_NOTE + LOCAL_NOTE,
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
         outputSchema: confirmationOutput,
         inputSchema: z.object({

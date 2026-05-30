@@ -9,7 +9,7 @@ Pick up a task and implement it. If an argument is provided, use it as the task 
 
 ## Process
 
-1. **Find the task** — if "$ARGUMENTS" is provided, use `task_info` to get the task. Otherwise, call `task_list` with filter `status:pending` and pick the highest-urgency task that is NOT blocked (+BLOCKED).
+1. **Find the task** — if "$ARGUMENTS" is provided, ALWAYS resolve it with `task_info` first to confirm the task exists and get its current state (status, project, deps, attached doc). Otherwise, call `task_list` with filter `status:pending` and pick the highest-urgency task that is NOT blocked (+BLOCKED). Use the UUID from this lookup for every subsequent `task_start`/`task_done`/`task_annotate` call — never substitute a UUID from memory or a previous unrelated context.
 
 2. **Read the spec** — call `task_doc_read` to check if the task has an attached spec. If it does, read it carefully — it defines what to build and how to verify.
 
