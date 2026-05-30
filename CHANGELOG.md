@@ -14,6 +14,7 @@
 ### Changed
 
 - **Bumped `@backloghq/agentdb` from `^2.2.1` to `^2.3.0`** — pulls in multi-writer text-index support (`AgentDBOptions.agentId` plumbed through to `TermLog`, federated reader view, cross-agent tombstoning, per-write flush in multi-writer mode, cheap `Collection.refresh()`). Requires `@backloghq/termlog ^0.2.0`. Backlog already passes a per-agent `BACKLOG_AGENT_ID` (auto-derived when unset), so no app-level wiring change is required.
+- **Bumped all other deps to latest** — `zod` 4.3.6 → 4.4.3; dev deps `@types/node` 25.5.2 → 25.9.1, `@vitest/coverage-v8` 4.1.4 → 4.1.7, `eslint` 10.2.0 → 10.4.1, `typescript` ~6.0.2 → ^6.0.3, `typescript-eslint` 8.58.1 → 8.60.0, `vitest` 4.1.4 → 4.1.7. `npm audit fix` resolves 7 transitive vulns (6 moderate, 1 high). Build + lint + 193 tests all pass unchanged.
 
 ### Fixed
 
