@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import { safe, parseTags } from "../helpers.js";
-import { confirmationOutput, LOCAL_NOTE } from "../schemas.js";
+import { confirmationOutput, LOCAL_NOTE, VERIFY_ID_NOTE } from "../schemas.js";
 import { addTask, taskCommand, logTask, duplicateTask, type EngineConfig } from "../engine/index.js";
 
 export function registerLifecycleTools(server: McpServer, config: EngineConfig): void {
@@ -12,13 +12,16 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
       description:
         "Create a new pending task and return its UUID. Only 'description' is required; all other fields are optional. " +
         "The task gets a stable numeric ID and UUID for cross-session references. Returns a confirmation with the UUID on success. " +
+        "Description is a SHORT SUMMARY (≤500 chars) — one-line statement of what needs doing. " +
+        "For acceptance criteria, technical context, requirements, or anything longer than a sentence or two, " +
+        "create the task with a short description and then call task_doc_write to attach a markdown spec. " +
         "Errors if description is empty or exceeds 500 chars, project name has invalid characters, or dates are unparseable. " +
         "This operation can be reversed with task_undo. " +
         "To record already-completed work, use task_log instead. To copy an existing task, use task_duplicate." + LOCAL_NOTE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       outputSchema: confirmationOutput,
       inputSchema: z.object({
-        description: z.string().describe("Task description (required, max 500 chars). Brief summary of what needs to be done."),
+        description: z.string().describe("Task description (required, max 500 chars). One-line summary of what needs doing. For longer content (acceptance criteria, requirements, context) keep this short and use task_doc_write to attach a markdown spec afterwards."),
         project: z.string().optional().describe("Project name for grouping (alphanumeric, hyphens, underscores). E.g. 'backend', 'auth-refactor'"),
         tags: z.string().optional().describe("Tags as comma-separated list or JSON array. E.g. 'bug,urgent' or '[\"bug\",\"urgent\"]'. Used for filtering with +tag/-tag syntax."),
         priority: z.enum(["H", "M", "L"]).optional().describe("Priority: H (high), M (medium), L (low). Affects urgency score and sort order."),
@@ -71,7 +74,7 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
         "The task remains in the database and appears in completed task queries (filter: 'status:completed'). " +
         "If the task is a recurring instance, completing it triggers generation of the next instance. " +
         "This operation can be reversed with task_undo. Calling task_done on an already-completed task returns an error. " +
-        "To record work that was already done without creating a pending task first, use task_log instead." + LOCAL_NOTE,
+        "To record work that was already done without creating a pending task first, use task_log instead." + VERIFY_ID_NOTE + LOCAL_NOTE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: confirmationOutput,
       inputSchema: z.object({
@@ -95,7 +98,7 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
         "Soft-delete a task by setting its status to 'deleted'. Returns a confirmation message on success. " +
         "Errors if the task is not found. The task remains in the database and can be restored with task_undo. " +
         "Deleted tasks are excluded from default queries but visible with filter 'status:deleted'. " +
-        "To permanently erase a deleted task, use task_purge. For bulk cleanup, use task_archive instead." + LOCAL_NOTE,
+        "To permanently erase a deleted task, use task_purge. For bulk cleanup, use task_archive instead." + VERIFY_ID_NOTE + LOCAL_NOTE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: confirmationOutput,
       inputSchema: z.object({
@@ -120,7 +123,7 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
         "Returns a confirmation on success. Errors if the task is not found or is not in pending status. " +
         "Started tasks appear in +ACTIVE queries and get a higher urgency score. " +
         "Starting an already-active task is idempotent (no error). This operation can be reversed with task_undo. " +
-        "Use task_stop when pausing work, or task_done when finished. Multiple tasks can be active simultaneously." + LOCAL_NOTE,
+        "Use task_stop when pausing work, or task_done when finished. Multiple tasks can be active simultaneously." + VERIFY_ID_NOTE + LOCAL_NOTE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: confirmationOutput,
       inputSchema: z.object({
@@ -144,7 +147,7 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
         "Stop actively working on a task by clearing the start timestamp. " +
         "Returns a confirmation on success. Errors if the task is not found or is not currently active. " +
         "The task returns to pending status and no longer appears in +ACTIVE queries. " +
-        "This operation can be reversed with task_undo. To finish a task instead of pausing, use task_done." + LOCAL_NOTE,
+        "This operation can be reversed with task_undo. To finish a task instead of pausing, use task_done." + VERIFY_ID_NOTE + LOCAL_NOTE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       outputSchema: confirmationOutput,
       inputSchema: z.object({
@@ -173,7 +176,7 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       outputSchema: confirmationOutput,
       inputSchema: z.object({
-        description: z.string().describe("Description of the completed work (required, max 500 chars)."),
+        description: z.string().describe("Description of the completed work (required, max 500 chars). Keep to a one-line summary; for longer notes attach a markdown doc via task_doc_write afterwards."),
         project: z.string().optional().describe("Project name for grouping."),
         tags: z.string().optional().describe("Tags as comma-separated list. E.g. 'done,reviewed'"),
         priority: z.enum(["H", "M", "L"]).optional().describe("Priority: H (high), M (medium), L (low)."),
@@ -212,7 +215,7 @@ export function registerLifecycleTools(server: McpServer, config: EngineConfig):
         "Create a new pending task by copying an existing one, optionally overriding specific fields. Returns a confirmation with the new UUID. " +
         "The copy gets a new UUID and ID; start/end timestamps and status are reset to pending. " +
         "Errors if the source task is not found, or if overridden fields fail validation (invalid project name, bad date, etc). " +
-        "This operation can be reversed with task_undo. For creating from scratch, use task_add instead." + LOCAL_NOTE,
+        "This operation can be reversed with task_undo. For creating from scratch, use task_add instead." + VERIFY_ID_NOTE + LOCAL_NOTE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       outputSchema: confirmationOutput,
       inputSchema: z.object({

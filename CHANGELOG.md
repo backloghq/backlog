@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## 2.4.3 (2026-05-30)
+
+### Added
+
+- **Multi-writer text-index support** — backlog now opens its termlog text index in multi-writer mode via agentdb 2.3 + termlog 0.2. The parent Claude Code process and every spawned subagent / experimental agent-team member can read AND write to the same backlog data directory concurrently without crashing on the prior single-writer `.lock`. Each writer owns its own per-agent termlog files (`manifest-<agentId>.json`, `seg-<agentId>-NNNNNN.seg`, `docids-<agentId>.snap/.log`) and the reader view is the federated union of every writer's commits. `Collection.refresh()` (called automatically before every read and write by the engine's `sync()` helper) picks up other agents' new commits — including BM25 segments — without an expensive rebuild.
+- **One-time auto-migration of legacy single-writer text index** — on first launch after upgrade, agentdb detects the legacy `text/manifest.json` and runs `TermLog.migrateLegacy()` once to convert the layout to per-agent files (assigning the migrating agent slot 0). A `console.warn` records the conversion. Existing tasks remain searchable; no manual migration step.
+- **Tool-description guardrails for agents** — every mutation tool (`task_done`, `task_delete`, `task_start`, `task_stop`, `task_duplicate`, `task_modify`, `task_annotate`, `task_denotate`, `task_purge`, `task_doc_write`, `task_doc_delete`) now appends a `VERIFY_ID_NOTE` instructing the caller to confirm the UUID via `task_list` / `task_info` before mutating, never relying on IDs from prior sessions or memory. `task_add` / `task_log` / `task_modify` and the `description` field's schema docstring now explicitly call out the 500-char cap and direct agents to `task_doc_write` for longer content (acceptance criteria, requirements, technical context).
+- **Skill / agent guidance** — `skills/implement/SKILL.md`, `skills/handoff/SKILL.md`, `skills/refine/SKILL.md`, `skills/plan/SKILL.md`, and `agents/task-planner.md` updated with explicit "use UUIDs from the live lookup, not memory" and "descriptions are one-line summaries; longer content goes in a doc" guidance.
+
+### Changed
+
+- **Bumped `@backloghq/agentdb` from `^2.2.1` to `^2.3.0`** — pulls in multi-writer text-index support (`AgentDBOptions.agentId` plumbed through to `TermLog`, federated reader view, cross-agent tombstoning, per-write flush in multi-writer mode, cheap `Collection.refresh()`). Requires `@backloghq/termlog ^0.2.0`. Backlog already passes a per-agent `BACKLOG_AGENT_ID` (auto-derived when unset), so no app-level wiring change is required.
+- **Bumped all other deps to latest** — `zod` 4.3.6 → 4.4.3; dev deps `@types/node` 25.5.2 → 25.9.1, `@vitest/coverage-v8` 4.1.4 → 4.1.7, `eslint` 10.2.0 → 10.4.1, `typescript` ~6.0.2 → ^6.0.3, `typescript-eslint` 8.58.1 → 8.60.0, `vitest` 4.1.4 → 4.1.7. `npm audit fix` resolves 7 transitive vulns (6 moderate, 1 high). Build + lint + 193 tests all pass unchanged.
+
+### Fixed
+
+- **Multi-writer crash class eliminated** — the `IndexLockedError: Index is locked by process <pid>` startup failure that took down the backlog MCP server in any process that wasn't the first to open the data directory (e.g. spawned experimental-agent-team subagents while the parent was running) no longer occurs. Validated end-to-end with 3 concurrent writers (parent + 2 subagents): all see each other's tasks via attribute filters and BM25 text search, including cross-agent updates and deletes.
+
 ## 2.4.2 (2026-05-07)
 
 ### Changed

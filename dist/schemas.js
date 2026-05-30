@@ -18,3 +18,9 @@ export const countOutput = z.object({ count: z.number() });
 export const stringArrayOutput = z.object({ items: z.array(z.string()) });
 export const docOutput = z.object({ content: z.string() });
 export const LOCAL_NOTE = " No authentication required. No rate limits. All operations are local to the project's data directory.";
+/**
+ * Reminder appended to every mutation tool's description: agents must verify
+ * task UUIDs against the live store before mutating. Carried as a constant so
+ * the wording stays consistent across task_done, task_modify, task_delete, etc.
+ */
+export const VERIFY_ID_NOTE = " Before passing a numeric ID or UUID to this tool, confirm it exists in the current backlog state via task_list or task_info — do not rely on IDs from prior sessions, memory, or the user's recall, since tasks may have been deleted, completed, or never existed.";

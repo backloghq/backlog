@@ -17,14 +17,14 @@ Break down the given goal into actionable tasks. The goal is: "$ARGUMENTS"
    - Independent where possible, with explicit dependencies where not
 
 3. **Create tasks** — for each task, use `task_add` with:
-   - A clear, actionable description (start with a verb)
+   - A clear, actionable description (start with a verb, max 500 chars — keep it to a one-line summary; longer content goes in step 4)
    - `project` set to a logical grouping
    - `priority` based on urgency and importance (H for blockers, M for core work, L for nice-to-have)
    - `tags` for categorization (e.g., `frontend`, `backend`, `testing`, `docs`)
    - `depends` to express ordering constraints (use UUIDs from previously created tasks)
    - `scheduled` if the task shouldn't start until a certain date
 
-4. **Write specs for complex tasks** — for any task that needs detailed requirements or context, use `task_doc_write` to attach a markdown document explaining:
+4. **Write specs for complex tasks** — for any task that needs detailed requirements or context (anything that wouldn't fit in 500 chars), use `task_doc_write` to attach a markdown document explaining:
    - What needs to be built
    - Key technical decisions
    - Acceptance criteria
